@@ -37,11 +37,10 @@ float ground_speed_x_ratio = 0.0;
 float ground_speed_y_ratio = 0.0;
 
 ros::Publisher groundspeed_pub;
-//void callback(const Range::ConstPtr& Lidarmsg, const Range::ConstPtr& Servomsg,const Range::ConstPtr& Compassmsg)
+
 void callback(const Imu::ConstPtr& Imumsg, const OpticalFlowRad::ConstPtr& Opticalflowmsg)
 {
    
- //  terp::LidarMsg m;
    mavros_msgs::OpticalFlowRad m;
 
    gyro_x = Imumsg->angular_velocity.x;
@@ -50,21 +49,21 @@ void callback(const Imu::ConstPtr& Imumsg, const OpticalFlowRad::ConstPtr& Optic
    acc_x = Imumsg->linear_acceleration.x;
    acc_y = Imumsg->linear_acceleration.y;
 
-  int time1 = (int) Imumsg->header.stamp.sec;
-  int time2 = (int) Imumsg->header.stamp.nsec;
-
-  timer = time1 + (time2/1000000000);   
-
-   dt = timer - dt;
-
-   vel_x = vel_x + (acc_x*dt/(1000000000));
-   vel_y = vel_y + (acc_y*dt/(1000000000));
-
    opt_flow_x = Opticalflowmsg->integrated_x;
    opt_flow_y = Opticalflowmsg->integrated_y;
 
-   ground_speed_x = ((opt_flow_x) + (gyro_y*2*3.14*131));
-   ground_speed_y = (opt_flow_y - (gyro_x*2*3.14*131));
+   dt = (Opticalflowmsg->integration_time_us)/1000000; 
+
+ 
+   if(abs(gyro_y*dt*379.05) > 1)	
+   	ground_speed_x = ((opt_flow_x) + (gyro_y*dt*379.05));
+   else
+	ground_speed_x = opt_flow_x ; 
+ 
+   if(abs(gyro_x*dt*366.6) > 1)
+   	ground_speed_y = (opt_flow_y - (gyro_x*dt*366.6));
+   else
+	ground_speed_y = opt_flow_y ;
 
    imu_speed_x = vel_y + gyro_y;
    imu_speed_y = vel_x + gyro_x;
@@ -95,9 +94,6 @@ void callback(const Imu::ConstPtr& Imumsg, const OpticalFlowRad::ConstPtr& Optic
    m.integrated_zgyro = opt_flow_x;
    m.distance = opt_flow_y;
    
- //  m.range=lidar_range;
- //  m.servo_angle=servo_angle;
-   //m.field_of_view=compass_angle;
    m.header.stamp=ros::Time::now();
    
    groundspeed_pub.publish(m);
@@ -107,8 +103,6 @@ void callback(const Imu::ConstPtr& Imumsg, const OpticalFlowRad::ConstPtr& Optic
 
 int main(int argc, char **argv)
 {
- 
-
   ros::init(argc, argv, "groundspeed_node");
   
   ros::NodeHandle n;
@@ -117,15 +111,9 @@ int main(int argc, char **argv)
 
   message_filters::Subscriber<mavros_msgs::OpticalFlowRad> OpticalFlow_sub(n, "OpticalFlowXY", 1);
   message_filters::Subscriber<sensor_msgs::Imu> imu_sub(n, "crazyflie/imu", 1);
- // message_filters::Subscriber<sensor_msgs::Range> compass_sub(n, "compass_data", 10);
-    
-       
-  //  typedef sync_policies::ApproximateTime<sensor_msgs::Range, sensor_msgs::Range, sensor_msgs::Range> MySyncPolicy;
-  // ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
-  
-  //typedef sync_policies::ApproximateTime<sensor_msgs::Range, sensor_msgs::Range, sensor_msgs::Range> MySyncPolicy;
+ 
   typedef sync_policies::ApproximateTime< sensor_msgs::Imu, mavros_msgs::OpticalFlowRad> MySyncPolicy;
-  //Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), lidar_sub, servo_sub, compass_sub);
+  
   Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), imu_sub, OpticalFlow_sub);
   
   sync.registerCallback(boost::bind(&callback, _1,_2)); 
