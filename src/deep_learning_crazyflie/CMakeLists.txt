@@ -144,16 +144,19 @@ include_directories(
 
 ## Declare a C++ executable
  add_executable(deep_learning_crazyflie_node src/ground_speed.cpp)
+ add_executable(crazyflie_teleop_node src/keyboard_controller_crazyflie.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(deep_learning_crazyflie_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(crazyflie_teleop_node deep_learning_crazyflie_generate_messages_cpp)
 add_dependencies(deep_learning_crazyflie_node deep_learning_crazyflie_generate_messages_cpp)
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(deep_learning_crazyflie_node
 #   ${catkin_LIBRARIES}
 # )
 target_link_libraries(deep_learning_crazyflie_node ${catkin_LIBRARIES})
+target_link_libraries(crazyflie_teleop_node  ${catkin_LIBRARIES})
 
 #############
 ## Install ##
