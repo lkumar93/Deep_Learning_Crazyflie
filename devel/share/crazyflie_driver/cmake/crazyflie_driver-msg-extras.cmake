@@ -1,0 +1,2 @@
+set(crazyflie_driver_MESSAGE_FILES "/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_driver/msg/LogBlock.msg;/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_driver/msg/GenericLogData.msg")
+set(crazyflie_driver_SERVICE_FILES "/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_driver/srv/AddCrazyflie.srv;/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_driver/srv/UpdateParams.srv")

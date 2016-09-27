@@ -1,0 +1,8 @@
+prefix=/home/avinash/Deep_Learning_Crazyflie/install
+
+Name: hector_quadrotor_controller_gazebo
+Description: Description of hector_quadrotor_controller_gazebo
+Version: 0.3.5
+Cflags: -I/home/avinash/Deep_Learning_Crazyflie/install/include
+Libs: -L/home/avinash/Deep_Learning_Crazyflie/install/lib -lhector_quadrotor_controller_gazebo
+Requires: gazebo_ros_control hector_quadrotor_controller

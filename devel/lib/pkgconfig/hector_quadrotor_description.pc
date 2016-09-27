@@ -1,0 +1,8 @@
+prefix=/home/avinash/Deep_Learning_Crazyflie/devel
+
+Name: hector_quadrotor_description
+Description: Description of hector_quadrotor_description
+Version: 0.3.5
+Cflags: 
+Libs: -L/home/avinash/Deep_Learning_Crazyflie/devel/lib 
+Requires: 

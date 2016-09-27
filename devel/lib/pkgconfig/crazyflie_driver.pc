@@ -1,0 +1,8 @@
+prefix=/home/avinash/Deep_Learning_Crazyflie/devel
+
+Name: crazyflie_driver
+Description: Description of crazyflie_driver
+Version: 0.0.1
+Cflags: -I/home/avinash/Deep_Learning_Crazyflie/devel/include
+Libs: -L/home/avinash/Deep_Learning_Crazyflie/devel/lib 
+Requires: message_runtime std_msgs tf crazyflie_cpp

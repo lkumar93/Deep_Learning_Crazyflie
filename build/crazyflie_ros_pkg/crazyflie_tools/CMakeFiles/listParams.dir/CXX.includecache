@@ -1,0 +1,40 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_cpp/include/crazyflie_cpp/Crazyflie.h
+cstring
+-
+Crazyradio.h
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_cpp/include/crazyflie_cpp/Crazyradio.h
+crtp.h
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_cpp/include/crazyflie_cpp/crtp.h
+list
+-
+set
+-
+map
+-
+iostream
+-
+
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_cpp/include/crazyflie_cpp/Crazyradio.h
+stdint.h
+-
+vector
+-
+
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_cpp/include/crazyflie_cpp/crtp.h
+
+/home/avinash/Deep_Learning_Crazyflie/src/crazyflie_ros_pkg/crazyflie_tools/src/listParams.cpp
+iostream
+-
+boost/program_options.hpp
+-
+crazyflie_cpp/Crazyflie.h
+-
+
