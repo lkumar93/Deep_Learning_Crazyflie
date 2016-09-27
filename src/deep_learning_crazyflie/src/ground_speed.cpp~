@@ -7,6 +7,7 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+
 using namespace message_filters;
 using namespace sensor_msgs;
 using namespace mavros_msgs;
@@ -54,8 +55,16 @@ void callback(const Imu::ConstPtr& Imumsg, const OpticalFlowRad::ConstPtr& Optic
 
    dt = (Opticalflowmsg->integration_time_us)/1000000; 
 
-   ground_speed_x = ((opt_flow_x) + (gyro_y*dt*379.05));
-   ground_speed_y = (opt_flow_y - (gyro_x*dt*366.6));
+ 
+   if(abs(gyro_y*dt*379.05) > 1)	
+   	ground_speed_x = ((opt_flow_x) + (gyro_y*dt*379.05));
+   else
+	ground_speed_x = opt_flow_x ; 
+ 
+   if(abs(gyro_x*dt*366.6) > 1)
+   	ground_speed_y = (opt_flow_y - (gyro_x*dt*366.6));
+   else
+	ground_speed_y = opt_flow_y ;
 
    imu_speed_x = vel_y + gyro_y;
    imu_speed_y = vel_x + gyro_x;
