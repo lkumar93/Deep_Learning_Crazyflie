@@ -1,8 +1,0 @@
-prefix=/home/avinash/Deep_Learning_Crazyflie/install
-
-Name: opencv_tests
-Description: Description of opencv_tests
-Version: 1.11.12
-Cflags: 
-Libs: -L/home/avinash/Deep_Learning_Crazyflie/install/lib 
-Requires: 

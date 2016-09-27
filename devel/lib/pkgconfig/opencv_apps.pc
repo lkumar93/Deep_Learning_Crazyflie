@@ -1,8 +1,0 @@
-prefix=/home/avinash/Deep_Learning_Crazyflie/devel
-
-Name: opencv_apps
-Description: Description of opencv_apps
-Version: 1.11.12
-Cflags: -I/home/avinash/Deep_Learning_Crazyflie/devel/include -I/home/avinash/Deep_Learning_Crazyflie/src/vision_opencv/opencv_apps/include
-Libs: -L/home/avinash/Deep_Learning_Crazyflie/devel/lib -lopencv_apps
-Requires: std_msgs

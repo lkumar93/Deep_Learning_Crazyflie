@@ -7,6 +7,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -DMAVLINK_DIALECT=common")
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED
   genmsg 
+  mavros_msgs
   sensor_msgs
 )
 
@@ -15,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  mavros
+  mavros_msgs
   message_generation
   message_filters
   genmsg
@@ -79,6 +82,7 @@ find_package(catkin REQUIRED COMPONENTS
    DEPENDENCIES
    sensor_msgs
    std_msgs
+   mavros_msgs
  )
 
 ################################################
@@ -113,7 +117,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
  INCLUDE_DIRS include
 #  LIBRARIES deep_learning_crazyflie
- CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs message_runtime
+ CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs mavros_msgs message_runtime
  DEPENDS system_lib
 )
 

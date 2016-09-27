@@ -1,8 +1,0 @@
-prefix=/home/avinash/Deep_Learning_Crazyflie/devel
-
-Name: deep_learning_crazyflie
-Description: Description of deep_learning_crazyflie
-Version: 0.0.0
-Cflags: -I/home/avinash/Deep_Learning_Crazyflie/src/deep_learning_crazyflie/include
-Libs: -L/home/avinash/Deep_Learning_Crazyflie/devel/lib 
-Requires: roscpp rospy sensor_msgs std_msgs message_runtime
