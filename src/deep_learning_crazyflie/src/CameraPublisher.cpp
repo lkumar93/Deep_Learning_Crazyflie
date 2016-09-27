@@ -1,3 +1,30 @@
+//
+// THIS CONTAINS THE IMPLEMENTATION FOR PUBLISHING ON-BOARD CAMERA IMAGES
+// ON CRAZYFLIE USING THE CAMERA PUBLISHER CLASS
+//
+// COPYRIGHT BELONGS TO THE AUTHOR OF THIS CODE
+//
+// AUTHOR : LAKSHMAN KUMAR
+// AFFILIATION : UNIVERSITY OF MARYLAND, MARYLAND ROBOTICS CENTER
+// EMAIL : LKUMAR93@UMD.EDU
+// LINKEDIN : WWW.LINKEDIN.COM/IN/LAKSHMANKUMAR1993
+//
+// THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THE MIT LICENSE
+// THE WORK IS PROTECTED BY COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF
+// THE WORK OTHER THAN AS AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS PROHIBITED.
+// 
+// BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE TO
+// BE BOUND BY THE TERMS OF THIS LICENSE. THE LICENSOR GRANTS YOU THE RIGHTS
+// CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
+// CONDITIONS.
+//
+
+///////////////////////////////////////////
+//
+//	LIBRARIES
+//
+///////////////////////////////////////////
+
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
@@ -8,8 +35,15 @@
 using namespace cv;
 using namespace std;
 
+///////////////////////////////////////////
+//
+//	CLASSES
+//
+///////////////////////////////////////////
 class CameraPublisher
 {  
+
+  //Declare all the necessary variables
   string camera_position;
   int camera_input_id ;
   VideoCapture cap;
@@ -21,6 +55,7 @@ class CameraPublisher
 
   public:
 
+  //Use the constructor to initialize variables
   CameraPublisher(string position, int id, ros::NodeHandle nh)
   {
 	camera_position = position ;
@@ -32,6 +67,7 @@ class CameraPublisher
 
   }
 
+  // Initialize the camera
   bool Initialize()
   {
   	cap.open(camera_input_id);
@@ -46,6 +82,7 @@ class CameraPublisher
 
   }
 
+  // Publish the image from the camera to the corresponding topic
   void Publish()
   {
         cap >> InputImage;
@@ -64,16 +101,26 @@ class CameraPublisher
   
 };
 
-int main( int argc, char** argv )
-{
+///////////////////////////////////////////
+//
+//	MAIN FUNCTION
+//
+///////////////////////////////////////////
 
-    ros::init(argc, argv, "crazyflie_image_publisher");
+int main( int argc, char** argv )
+{    
+    //Initialize the Crazyflie Camera Publisher Node
+    ros::init(argc, argv, "crazyflie_camera_node");
     ros::NodeHandle nh;
-    
+ 
+    //Create a publisher for the bottom facing camera
     CameraPublisher bottom_camera_pub("bottom",0,nh);
 
+    //Initialize the camera and check for errors
     bool Initialized = bottom_camera_pub.Initialize();    
 
+
+    //If the camera has been initialized and everything is ok , publish the images from the camera
     while(nh.ok() && Initialized)
     {
 	bottom_camera_pub.Publish() ;
