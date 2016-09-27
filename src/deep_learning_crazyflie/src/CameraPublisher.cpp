@@ -49,18 +49,17 @@ class CameraPublisher
   VideoCapture cap;
   Mat InputImage;
   image_transport::Publisher camera_pub;
-  string prefix = "crazyflie/camera/";
+  string prefix = "crazyflie/cameras/";
   string postfix = "/image" ;
   string topic_name ;
 
   public:
 
   //Use the constructor to initialize variables
-  CameraPublisher(string position, int id, ros::NodeHandle nh)
+  CameraPublisher(string position, int id, image_transport::ImageTransport ImageTransporter)
   {
 	camera_position = position ;
-	camera_input_id = id ;
-	image_transport::ImageTransport ImageTransporter = image_transport::ImageTransport(nh);
+	camera_input_id = id ;	
 	topic_name = prefix + camera_position +postfix ;
 	camera_pub = ImageTransporter.advertise(topic_name, 1);	
 	
@@ -112,9 +111,10 @@ int main( int argc, char** argv )
     //Initialize the Crazyflie Camera Publisher Node
     ros::init(argc, argv, "crazyflie_camera_node");
     ros::NodeHandle nh;
+    image_transport::ImageTransport it(nh);
  
     //Create a publisher for the bottom facing camera
-    CameraPublisher bottom_camera_pub("bottom",0,nh);
+    CameraPublisher bottom_camera_pub("bottom",0,it);
 
     //Initialize the camera and check for errors
     bool Initialized = bottom_camera_pub.Initialize();    
