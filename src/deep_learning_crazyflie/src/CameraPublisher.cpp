@@ -93,7 +93,7 @@ class CameraPublisher
 	{
 	    sensor_msgs::ImagePtr msg;
 	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", InputImage).toImageMsg();
-	    msg.header.stamp = ros::Time::now() ;
+	    msg->header.stamp = ros::Time::now() ;
 	    camera_pub.publish(msg) ;
 	}
   }
