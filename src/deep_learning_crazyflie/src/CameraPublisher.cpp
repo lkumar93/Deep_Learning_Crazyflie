@@ -61,8 +61,7 @@ class CameraPublisher
 	camera_position = position ;
 	camera_input_id = id ;	
 	topic_name = prefix + camera_position +postfix ;
-	camera_pub = ImageTransporter.advertise(topic_name, 1);	
-	
+	camera_pub = ImageTransporter.advertise(topic_name, 1);		
 
   }
 
@@ -94,6 +93,7 @@ class CameraPublisher
 	{
 	    sensor_msgs::ImagePtr msg;
 	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", InputImage).toImageMsg();
+	    msg.header.stamp = ros::Time::now() ;
 	    camera_pub.publish(msg) ;
 	}
   }
