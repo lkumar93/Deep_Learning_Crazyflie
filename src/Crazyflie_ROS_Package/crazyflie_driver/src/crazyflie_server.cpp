@@ -119,6 +119,16 @@ private:
     float pm_vbat;
   } __attribute__((packed));
 
+
+  struct logOrientation {
+    float roll;
+    float pitch;
+    float yaw;
+    float height;
+    uint16_t thrust;
+  } __attribute__((packed));
+
+
 private:
   bool emergency(
     std_srvs::Empty::Request& req,
@@ -257,6 +267,7 @@ private:
     }
 
     std::unique_ptr<LogBlock<logImu> > logBlockImu;
+    std::unique_ptr<LogBlock<logOrientation> > logBlockOrientation;
     std::unique_ptr<LogBlock<log2> > logBlock2;
     std::vector<std::unique_ptr<LogBlockGeneric> > logBlocksGeneric(m_logBlocks.size());
     if (m_enableLogging) {
@@ -278,8 +289,23 @@ private:
             {"gyro", "x"},
             {"gyro", "y"},
             {"gyro", "z"},
+
           }, cb));
         logBlockImu->start(1); // 10ms
+
+	std::function<void(uint32_t, logOrientation*)> cb3 = std::bind(&CrazyflieROS::onOrientationData, this, std::placeholders::_1, std::placeholders::_2);
+
+        logBlockOrientation.reset(new LogBlock<logOrientation>(
+          &m_cf,{
+            {"stabilizer", "roll"},
+            {"stabilizer", "pitch"},
+            {"stabilizer", "yaw"},
+            {"posEstimatorAlt", "estimatedZ"},
+            {"stabilizer", "thrust"},
+ 
+          }, cb3));
+        logBlockOrientation->start(1); // 10ms
+
       }
 
       if (   m_enable_logging_temperature
@@ -291,14 +317,14 @@ private:
 
         logBlock2.reset(new LogBlock<log2>(
           &m_cf,{
-            {"mag", "x"},
-            {"mag", "y"},
-            {"mag", "z"},
+	    {"mag","x"},
+	    {"mag","y"},
+            {"mag","z"},
             {"baro", "temp"},
             {"baro", "pressure"},
             {"pm", "vbat"},
           }, cb2));
-        logBlock2->start(1); // 10ms
+        logBlock2->start(1); // 100ms
       }
 
       // custom log blocks
@@ -322,8 +348,14 @@ private:
         ++i;
       }
 
-
     }
+
+   
+    //std::string AltHoldParam = "/crazyflie/flightmode/althold" ;
+    //uint8_t AltHoldFlag = 1;
+    //updateParam<int>(AltHoldFlag,AltHoldParam);
+
+    
 
     ROS_INFO("Ready...");
     auto end = std::chrono::system_clock::now();
@@ -372,9 +404,15 @@ private:
       msg.linear_acceleration.x = data->acc_x * 9.81;
       msg.linear_acceleration.y = data->acc_y * 9.81;
       msg.linear_acceleration.z = data->acc_z * 9.81;
-
+ 
       m_pubImu.publish(msg);
     }
+  }
+
+  void onOrientationData(uint32_t time_in_ms, logOrientation* data) {
+
+   ROS_INFO("Roll = %f , Pitch = %f , Yaw = %f, Height = %f, Thrust = %d",data->pitch,data->roll,data->yaw,data->height,data->thrust);
+
   }
 
   void onLog2Data(uint32_t time_in_ms, log2* data) {
@@ -407,6 +445,7 @@ private:
       msg.magnetic_field.z = data->mag_z;
       m_pubMag.publish(msg);
     }
+
 
     if (m_enable_logging_pressure) {
       std_msgs::Float32 msg;
