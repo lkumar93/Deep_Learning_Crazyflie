@@ -5,6 +5,7 @@
 #include "crazyflie_driver/UpdateParams.h"
 #include "std_srvs/Empty.h"
 #include "geometry_msgs/Twist.h"
+#include "geometry_msgs/Vector3Stamped.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/Temperature.h"
 #include "sensor_msgs/MagneticField.h"
@@ -60,10 +61,13 @@ public:
     , m_serviceEmergency()
     , m_serviceUpdateParams()
     , m_subscribeCmdVel()
-    , m_pubImu()
+    , m_pubGyro()
+    , m_pubAccel()
+    , m_pubRotation()
     , m_pubTemp()
     , m_pubMag()
     , m_pubPressure()
+    , m_pubHeight()
     , m_pubBattery()
     , m_pubRssi()
     , m_sentSetpoint(false)
@@ -75,7 +79,9 @@ public:
     m_serviceUpdateParams = n.advertiseService(tf_prefix + "/update_params", &CrazyflieROS::updateParams, this);
 
     if (m_enable_logging_imu) {
-      m_pubImu = n.advertise<sensor_msgs::Imu>(tf_prefix + "/imu", 10);
+      m_pubGyro = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/gyro", 10);
+      m_pubAccel = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/accel", 10);
+      m_pubRotation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/rotation", 10);
     }
     if (m_enable_logging_temperature) {
       m_pubTemp = n.advertise<sensor_msgs::Temperature>(tf_prefix + "/temperature", 10);
@@ -85,6 +91,7 @@ public:
     }
     if (m_enable_logging_pressure) {
       m_pubPressure = n.advertise<std_msgs::Float32>(tf_prefix + "/pressure", 10);
+      m_pubHeight = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/height", 1);
     }
     if (m_enable_logging_battery) {
       m_pubBattery = n.advertise<std_msgs::Float32>(tf_prefix + "/battery", 10);
@@ -126,6 +133,7 @@ private:
     float yaw;
     float height;
     uint16_t thrust;
+    float asl;
   } __attribute__((packed));
 
 
@@ -302,6 +310,7 @@ private:
             {"stabilizer", "yaw"},
             {"posEstimatorAlt", "estimatedZ"},
             {"stabilizer", "thrust"},
+	    {"baro", "asl"},
  
           }, cb3));
         logBlockOrientation->start(1); // 10ms
@@ -324,7 +333,7 @@ private:
             {"baro", "pressure"},
             {"pm", "vbat"},
           }, cb2));
-        logBlock2->start(1); // 100ms
+        logBlock2->start(1); // 10ms
       }
 
       // custom log blocks
@@ -386,32 +395,57 @@ private:
 
   void onImuData(uint32_t time_in_ms, logImu* data) {
     if (m_enable_logging_imu) {
-      sensor_msgs::Imu msg;
+
+      geometry_msgs::Vector3Stamped msg;
       if (m_use_ros_time) {
         msg.header.stamp = ros::Time::now();
       } else {
         msg.header.stamp = ros::Time(time_in_ms / 1000.0);
       }
       msg.header.frame_id = m_tf_prefix + "/base_link";
-      msg.orientation_covariance[0] = -1;
-
+ 
       // measured in deg/s; need to convert to rad/s
-      msg.angular_velocity.x = degToRad(data->gyro_x);
-      msg.angular_velocity.y = degToRad(data->gyro_y);
-      msg.angular_velocity.z = degToRad(data->gyro_z);
+      msg.vector.x = degToRad(data->gyro_x);
+      msg.vector.y = degToRad(data->gyro_y);
+      msg.vector.z = degToRad(data->gyro_z);
+
+      m_pubGyro.publish(msg);
 
       // measured in mG; need to convert to m/s^2
-      msg.linear_acceleration.x = data->acc_x * 9.81;
-      msg.linear_acceleration.y = data->acc_y * 9.81;
-      msg.linear_acceleration.z = data->acc_z * 9.81;
+      msg.vector.x = data->acc_x * 9.81;
+      msg.vector.y = data->acc_y * 9.81;
+      msg.vector.z = data->acc_z * 9.81;
+
+      m_pubAccel.publish(msg);
  
-      m_pubImu.publish(msg);
+      
     }
   }
 
   void onOrientationData(uint32_t time_in_ms, logOrientation* data) {
 
-   ROS_INFO("Roll = %f , Pitch = %f , Yaw = %f, Height = %f, Thrust = %d",data->pitch,data->roll,data->yaw,data->height,data->thrust);
+   ROS_INFO("Roll = %f , Pitch = %f , Yaw = %f, Height = %f, Thrust = %d, ASL = %f",data->pitch,data->roll,data->yaw,(data->height),data->thrust, data->asl);
+
+   geometry_msgs::Vector3Stamped msg;
+
+   if (m_use_ros_time) {
+      msg.header.stamp = ros::Time::now();
+    } else {
+      msg.header.stamp = ros::Time(time_in_ms / 1000.0);
+    }
+     msg.header.frame_id = m_tf_prefix + "/base_link";
+
+     
+      // hPa (=mbar)
+     msg.vector.z = data->height;
+
+     m_pubHeight.publish(msg);
+  
+     msg.vector.x = data->pitch ;
+     msg.vector.y = data->roll ;
+     msg.vector.z = data->yaw ;
+
+     m_pubRotation.publish(msg);
 
   }
 
@@ -515,10 +549,13 @@ private:
   ros::ServiceServer m_serviceUpdateParams;
   ros::Subscriber m_subscribeCmdVel;
   ros::Subscriber m_subscribeDeepLearntCmdVel;
-  ros::Publisher m_pubImu;
+  ros::Publisher m_pubAccel;
+  ros::Publisher m_pubGyro;
+  ros::Publisher m_pubRotation;
   ros::Publisher m_pubTemp;
   ros::Publisher m_pubMag;
   ros::Publisher m_pubPressure;
+  ros::Publisher m_pubHeight;
   ros::Publisher m_pubBattery;
   ros::Publisher m_pubRssi;
   std::vector<ros::Publisher> m_pubLogDataGeneric;
