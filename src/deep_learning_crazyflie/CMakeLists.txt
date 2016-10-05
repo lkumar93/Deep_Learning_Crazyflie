@@ -7,6 +7,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -DMAVLINK_DIALECT=common")
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED
   sensor_msgs
+  cmake_modules
 )
 
 find_package(catkin REQUIRED COMPONENTS
@@ -15,12 +16,14 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   message_generation
+  message_filters
   image_transport
   cv_bridge
   message_filters
 )
 
 find_package(OpenCV REQUIRED)
+find_package(Eigen REQUIRED)
 
 add_subdirectory( ../klt_feature_tracker klt_feature_tracker)
 include_directories( ../klt_feature_tracker/include)
@@ -120,7 +123,7 @@ catkin_package(
  INCLUDE_DIRS include
 #  LIBRARIES deep_learning_crazyflie
  CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs message_runtime image_transport
- DEPENDS system_lib
+ DEPENDS system_lib Eigen
 )
 
 ###########
@@ -133,6 +136,7 @@ include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -150,6 +154,7 @@ include_directories(
  add_executable(crazyflie_teleop_node src/keyboard_controller_crazyflie.cpp)
  add_executable(crazyflie_camera_node src/CameraPublisher.cpp)
  add_executable(crazyflie_opticalflow_node src/CalcOpticalFlow.cpp)
+ add_executable(crazyflie_imu_node src/ImuPublisher.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -157,7 +162,8 @@ include_directories(
 add_dependencies(crazyflie_teleop_node deep_learning_crazyflie_generate_messages_cpp)
 add_dependencies(deep_learning_crazyflie_node deep_learning_crazyflie_generate_messages_cpp)
 add_dependencies(crazyflie_camera_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS})
-add_dependencies(crazyflie_opticalflow_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS})
+add_dependencies(crazyflie_opticalflow_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} ${Eigen_LIBRARIES} )
+add_dependencies(crazyflie_imu_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} ${Eigen_LIBRARIES} )
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(deep_learning_crazyflie_node
 #   ${catkin_LIBRARIES}
@@ -166,6 +172,7 @@ target_link_libraries(deep_learning_crazyflie_node ${catkin_LIBRARIES}  ${klt_fe
 target_link_libraries(crazyflie_teleop_node  ${catkin_LIBRARIES})
 target_link_libraries(crazyflie_camera_node  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} )
 target_link_libraries(crazyflie_opticalflow_node  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${klt_feature_tracker_LIBS} )
+target_link_libraries(crazyflie_imu_node  ${catkin_LIBRARIES})
 
 #############
 ## Install ##
