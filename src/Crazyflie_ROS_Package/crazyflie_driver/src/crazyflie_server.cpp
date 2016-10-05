@@ -63,7 +63,7 @@ public:
     , m_subscribeCmdVel()
     , m_pubGyro()
     , m_pubAccel()
-    , m_pubRotation()
+    , m_pubOrientation()
     , m_pubTemp()
     , m_pubMag()
     , m_pubPressure()
@@ -81,7 +81,7 @@ public:
     if (m_enable_logging_imu) {
       m_pubGyro = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/gyro", 10);
       m_pubAccel = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/accel", 10);
-      m_pubRotation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/rotation", 10);
+      m_pubOrientation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/orientation", 10);
     }
     if (m_enable_logging_temperature) {
       m_pubTemp = n.advertise<sensor_msgs::Temperature>(tf_prefix + "/temperature", 10);
@@ -445,7 +445,7 @@ private:
      msg.vector.y = data->roll ;
      msg.vector.z = data->yaw ;
 
-     m_pubRotation.publish(msg);
+     m_pubOrientation.publish(msg);
 
   }
 
@@ -551,7 +551,7 @@ private:
   ros::Subscriber m_subscribeDeepLearntCmdVel;
   ros::Publisher m_pubAccel;
   ros::Publisher m_pubGyro;
-  ros::Publisher m_pubRotation;
+  ros::Publisher m_pubOrientation;
   ros::Publisher m_pubTemp;
   ros::Publisher m_pubMag;
   ros::Publisher m_pubPressure;
