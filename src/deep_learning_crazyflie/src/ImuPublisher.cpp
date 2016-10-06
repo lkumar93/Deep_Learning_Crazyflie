@@ -87,7 +87,7 @@ int main(int argc, char **argv)
   ros::NodeHandle n;
 
   imu_pub = n.advertise<sensor_msgs::Imu>("crazyflie/imu", 10);
-  accel_pub = n.advertise<sensor_msgs::Imu>("crazyflie/accel/gravity_compensated", 10);
+  accel_pub = n.advertise<geometry_msgs::Vector3Stamped>("crazyflie/accel/gravity_compensated", 10);
 
   message_filters::Subscriber<geometry_msgs::Vector3Stamped> gyro_sub(n, "crazyflie/gyro", 1);
   message_filters::Subscriber<geometry_msgs::Vector3Stamped> accel_sub(n, "crazyflie/accel", 1);
