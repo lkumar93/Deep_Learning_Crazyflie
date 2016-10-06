@@ -113,8 +113,10 @@ int main( int argc, char** argv )
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
  
+    int camera_id;
+    nh.param<int>("/crazyflie/camera/bottom/id", camera_id, 0);
     //Create a publisher for the bottom facing camera
-    CameraPublisher bottom_camera_pub("bottom",0,it);
+    CameraPublisher bottom_camera_pub("bottom",camera_id,it);
 
     //Initialize the camera and check for errors
     bool Initialized = bottom_camera_pub.Initialize();    
