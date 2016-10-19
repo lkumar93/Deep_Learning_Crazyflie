@@ -26,11 +26,14 @@
 ///////////////////////////////////////////
 
 #include <ros/ros.h>
-#include <image_transport/image_transport.h>
-#include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <string>
 #include <iostream>
+#include <opencv2/highgui/highgui.hpp>
+#include <sensor_msgs/image_encodings.h>
+#include <image_transport/image_transport.h>
+#include <camera_info_manager/camera_info_manager.h>
+#include <deep_learning_crazyflie/camera_parameters.h>
 
 using namespace cv;
 using namespace std;
@@ -48,20 +51,66 @@ class CameraPublisher
   int camera_input_id ;
   VideoCapture cap;
   Mat InputImage;
-  image_transport::Publisher camera_pub;
+  image_transport::CameraPublisher camera_pub;
   string prefix = "crazyflie/cameras/";
   string postfix = "/image" ;
-  string topic_name ;
+  string camera_topic_name ;
+  sensor_msgs::CameraInfo* camera_info;
+  sensor_msgs::CameraInfoPtr camera_info_ptr;
 
   public:
 
   //Use the constructor to initialize variables
-  CameraPublisher(string position, int id, image_transport::ImageTransport ImageTransporter)
+  CameraPublisher(string position, int id, image_transport::ImageTransport ImageTransporter, double FL_X ,double PP_X ,double FL_Y, double PP_Y, double* DistArray)
   {
 	camera_position = position ;
 	camera_input_id = id ;	
-	topic_name = prefix + camera_position +postfix ;
-	camera_pub = ImageTransporter.advertise(topic_name, 1);		
+	camera_topic_name = prefix + camera_position + postfix ;
+	camera_pub = ImageTransporter.advertiseCamera(camera_topic_name, 1);	
+	camera_info = new sensor_msgs::CameraInfo ();
+	camera_info_ptr = sensor_msgs::CameraInfoPtr (camera_info);
+	
+	camera_info_ptr->header.frame_id = camera_position+"_camera";
+	camera_info->header.frame_id = camera_position+"_camera";
+	camera_info->width = 640;
+	camera_info->height = 480;
+
+	camera_info->K.at(0) = FL_X;
+	camera_info->K.at(2) = PP_X;
+	camera_info->K.at(4) = FL_Y;
+	camera_info->K.at(5) = PP_Y;
+	camera_info->K.at(8) = 1;
+	camera_info->P.at(0) = camera_info->K.at(0);
+	camera_info->P.at(1) = 0;
+	camera_info->P.at(2) = camera_info->K.at(2);
+	camera_info->P.at(3) = 0;
+	camera_info->P.at(4) = 0;
+	camera_info->P.at(5) = camera_info->K.at(4);
+	camera_info->P.at(6) = camera_info->K.at(5);
+	camera_info->P.at(7) = 0;
+	camera_info->P.at(8) = 0;
+	camera_info->P.at(9) = 0;
+	camera_info->P.at(10) = 1;
+	camera_info->P.at(11) = 0;
+	camera_info->distortion_model = "plumb_bob";
+
+	// Make Rotation Matrix an identity matrix
+	camera_info->R.at(0) = (double) 1;
+	camera_info->R.at(1) = (double) 0;
+	camera_info->R.at(2) = (double) 0;
+	camera_info->R.at(3) = (double) 0;
+	camera_info->R.at(4) = (double) 1;
+	camera_info->R.at(5) = (double) 0;
+	camera_info->R.at(6) = (double) 0;
+	camera_info->R.at(7) = (double) 0;
+	camera_info->R.at(8) = (double) 1;
+
+	for (int i = 0; i < 5; i++)
+	    camera_info->D.push_back (DistArray[i]);
+
+
+
+
 
   }
 
@@ -72,7 +121,7 @@ class CameraPublisher
 
     	if( !cap.isOpened() )
 	    {
-		cout << "Could not initialize camera with id : "<< camera_input_id << endl;
+		ROS_ERROR("Could not initialize camera with id : %d ",camera_input_id);
 		return false;
 	    }
 	
@@ -87,14 +136,19 @@ class CameraPublisher
 
         if( InputImage.empty() )
 	{
-	    cout << "Empty image from camera with id : "<< camera_input_id << endl ;
+		ROS_INFO("Empty image from camera with id : %d ",camera_input_id);
 	}
 	else
 	{
 	    sensor_msgs::ImagePtr msg;
+
 	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", InputImage).toImageMsg();
 	    msg->header.stamp = ros::Time::now() ;
-	    camera_pub.publish(msg) ;
+	    msg->header.frame_id = camera_position+"_camera";
+
+	    camera_info->header.stamp = ros::Time::now();
+
+	    camera_pub.publish(msg, camera_info_ptr) ;
 	}
   }
   
@@ -114,13 +168,13 @@ int main( int argc, char** argv )
     image_transport::ImageTransport it(nh);
  
     int camera_id;
-    nh.param<int>("/crazyflie/camera/bottom/id", camera_id, 0);
+    nh.param<int>("/crazyflie/crazyflie_camera_node/cameras/bottom/id", camera_id, 0);
+
     //Create a publisher for the bottom facing camera
-    CameraPublisher bottom_camera_pub("bottom",camera_id,it);
+    CameraPublisher bottom_camera_pub("bottom", camera_id, it, FocalLength_X, FocalLength_Y, PrincipalPoint_X, PrincipalPoint_Y, Distortion);
 
     //Initialize the camera and check for errors
     bool Initialized = bottom_camera_pub.Initialize();    
-
 
     //If the camera has been initialized and everything is ok , publish the images from the camera
     while(nh.ok() && Initialized)
