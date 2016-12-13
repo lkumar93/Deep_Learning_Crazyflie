@@ -317,6 +317,7 @@ private:
 
       }
 
+/*
       if (   m_enable_logging_temperature
           || m_enable_logging_magnetic_field
           || m_enable_logging_pressure
@@ -335,7 +336,7 @@ private:
           }, cb2));
         logBlock2->start(1); // 10ms
       }
-
+*/
       // custom log blocks
       size_t i = 0;
       for (auto& logBlock : m_logBlocks)

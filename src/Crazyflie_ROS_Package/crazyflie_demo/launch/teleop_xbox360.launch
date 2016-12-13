@@ -25,10 +25,15 @@
     <node name="crazyflie_demo_controller" pkg="crazyflie_demo" type="controller.py" output="screen">
     </node>
   </group>
+    <node name="crazyflie_imu_node" pkg="deep_learning_crazyflie" type="crazyflie_imu_node" />
+   <node name="crazyflie_camera_node" pkg="deep_learning_crazyflie" type="crazyflie_camera_node" >
+      <param name="cameras/bottom/id" value="1" />
+   </node>
+
 
   <node pkg="rviz" type="rviz" name="rviz" args="-d $(find crazyflie_demo)/launch/crazyflie.rviz" />
 
-  <node name="crazyflie_imu_node" pkg="deep_learning_crazyflie" type="crazyflie_imu_node" />
+  
 
   <!-- <node pkg="rqt_plot" type="rqt_plot" name="rqt_plot" args="/crazyflie/temperature/temperature"/> -->
 
