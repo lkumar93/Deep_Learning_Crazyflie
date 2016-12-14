@@ -1,0 +1,8 @@
+vision_opencv/cv_bridge
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/share/cv_bridge/cmake/cv_bridgeConfig.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/cv_bridge/cmake/cv_bridgeConfig.cmake
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/share/cv_bridge/cmake/cv_bridgeConfig-version.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/cv_bridge/cmake/cv_bridgeConfig-version.cmake
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/lib/libcv_bridge.so /home/avinash/Deep_Learning_Crazyflie/devel/lib/libcv_bridge.so
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/lib/pkgconfig/cv_bridge.pc /home/avinash/Deep_Learning_Crazyflie/devel/lib/pkgconfig/cv_bridge.pc
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/lib/python2.7/dist-packages/cv_bridge/__init__.py /home/avinash/Deep_Learning_Crazyflie/devel/lib/python2.7/dist-packages/cv_bridge/__init__.py
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/lib/python2.7/dist-packages/cv_bridge/boost/__init__.py /home/avinash/Deep_Learning_Crazyflie/devel/lib/python2.7/dist-packages/cv_bridge/boost/__init__.py
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/cv_bridge/lib/python2.7/dist-packages/cv_bridge/boost/cv_bridge_boost.so /home/avinash/Deep_Learning_Crazyflie/devel/lib/python2.7/dist-packages/cv_bridge/boost/cv_bridge_boost.so

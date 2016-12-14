@@ -1,0 +1,5 @@
+rotors_simulator/rotors_joy_interface
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_joy_interface/share/rotors_joy_interface/cmake/rotors_joy_interfaceConfig.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/rotors_joy_interface/cmake/rotors_joy_interfaceConfig.cmake
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_joy_interface/share/rotors_joy_interface/cmake/rotors_joy_interfaceConfig-version.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/rotors_joy_interface/cmake/rotors_joy_interfaceConfig-version.cmake
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_joy_interface/lib/pkgconfig/rotors_joy_interface.pc /home/avinash/Deep_Learning_Crazyflie/devel/lib/pkgconfig/rotors_joy_interface.pc
+/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_joy_interface/lib/rotors_joy_interface/rotors_joy_interface /home/avinash/Deep_Learning_Crazyflie/devel/lib/rotors_joy_interface/rotors_joy_interface
