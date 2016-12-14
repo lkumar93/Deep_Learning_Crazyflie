@@ -1,0 +1,76 @@
+##TODO##
+
+Required Packages
+Rotors Simulator
+MAV_COMM
+LSD_SLAM
+
+Here are some instructions regarding operation of crazyflie.
+
+This contains my hacks and tweaks to the original crazyflie ros package
+
+Clone the repository below into a catkin workspace
+https://github.com/lkumar93/Deep_Learning_Crazyflie.git
+
+
+Do "catkin_make_isolated"
+
+
+Connect the crazyradio to the computer and switch on crazyflie
+
+do "source devel/setup.bash"
+
+
+Then in order to connect ros to crazyflie run the following command
+
+roslaunch crazyflie_demo teleop_xbox360.launch uri:=radio://0/80/250K
+
+
+To check the uri for your crazyradio do the following
+
+rosrun crazyflie_tools scan
+
+
+If you wanna use xbox 360 controller, run the following command
+
+roslaunch hector_quadrotor_teleop xbox_controller.launch
+
+
+If you wanna use keyboard , run the following command
+
+rosrun deep_learning_crazyflie crazyflie_teleop_node
+
+Keys : W,S controls thrust; up, down controls pitch; left , right controls roll ; A, D controls Yaw rate; Q is E-Stop
+
+
+If you wanna do autonomous control,
+
+you can publish commands to the topic "crazyflie/deep_learning/cmd_vel" and to get sensor values you can subscribe to topic " crazyflie/imu" and " crazyflie/height"
+
+
+Limits for control inputs are as follows
+
+linear.y: roll [e.g. -30 to 30 degrees]
+
+linear.x: pitch [e.g. -30 to 30 degrees]
+
+angular.z: yawrate [e.g. -200 to 200 degrees/second] l
+
+linear.z: thrust [10000 to 60000 (mapped to PWM output)]
+
+
+in order to do althold, there are some complicated commands you have to send because of the way the firmware works.
+
+You have to increase thrust till you hover. Then enable althold by setting the rosparam "crazyflie/althold" and make your thrust zero as soon as you enter this mode. Then increase or decrease your thrust to change your height.
+
+
+If you wanna use a camera. you can run the crazyflie_camera_node  justr change the video id depending on your system config.
+
+To run optical flow on this camera, you can run the crazyflie_opticalflow_node
+
+
+If you wanna tweak the firmware and official ros package by yourself. You can clone the repositories below
+
+https://github.com/bitcraze/crazyflie-firmware
+
+https://github.com/whoenig/crazyflie_ros
