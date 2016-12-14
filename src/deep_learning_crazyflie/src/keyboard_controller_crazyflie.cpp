@@ -35,10 +35,10 @@ class TeleopCrazyflie
  };
 
 TeleopCrazyflie::TeleopCrazyflie():
-  roll(0),
-  pitch(0),
-  yawrate(0),
-  thrust(0)
+  roll(0.0),
+  pitch(0.0),
+  yawrate(0.0),
+  thrust(32767.0)
 {
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
 }
@@ -80,7 +80,7 @@ void TeleopCrazyflie::keyLoop()
   raw.c_cc[VEOL] = 1;
   raw.c_cc[VEOF] = 2;
   tcsetattr(kfd, TCSANOW, &raw);
-  int thrust_offset,roll_offset,pitch_offset,yawrate_offset;
+  double thrust_offset,roll_offset,pitch_offset,yawrate_offset;
 
   puts("Reading from keyboard");
   puts("---------------------------");
@@ -98,10 +98,10 @@ void TeleopCrazyflie::keyLoop()
    ROS_INFO("value: 0x%02X\n", c);
    //ros::Duration(0.05).sleep();
    ROS_INFO("Thrust - %f, roll - %f ,pitch - %f,yawrate - %f",thrust,roll,pitch,yawrate);
-   thrust_offset = 100;
-   roll_offset = 1;
-   yawrate_offset = 1;
-   pitch_offset = 1;
+   thrust_offset = 1000 ;
+   roll_offset = 1.0;
+   yawrate_offset = 1.0;
+   pitch_offset = 1.0;
   
     switch(c)
     {
@@ -163,10 +163,10 @@ void TeleopCrazyflie::keyLoop()
 
     if(dirty ==true)
     {
-      thrust_offset = 0;
-      roll_offset = 0;   
-      yawrate_offset = 0;
-      pitch_offset = 0;
+      thrust_offset = 0.0;
+      roll_offset = 0.0;   
+      yawrate_offset = 0.0;
+      pitch_offset = 0.0;
       vel_pub_.publish(twist);    
       dirty=false;
     }
