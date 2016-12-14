@@ -168,7 +168,7 @@ int main( int argc, char** argv )
     image_transport::ImageTransport it(nh);
  
     int camera_id;
-    nh.param<int>("/crazyflie/crazyflie_camera_node/cameras/bottom/id", camera_id, 0);
+    nh.param<int>("crazyflie_camera_node/cameras/bottom/id", camera_id, 0);
 
     //Create a publisher for the bottom facing camera
     CameraPublisher bottom_camera_pub("bottom", camera_id, it, FocalLength_X, FocalLength_Y, PrincipalPoint_X, PrincipalPoint_Y, Distortion);
