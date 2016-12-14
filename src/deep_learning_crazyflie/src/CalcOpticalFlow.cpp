@@ -20,6 +20,10 @@
 //
 
 
+        //  lambda enabled: self._cf.param.set_value("flightmode.althold",
+//enabled))
+
+
 ///////////////////////////////////////////
 //
 //	LIBRARIES
@@ -46,17 +50,24 @@
 #include <iostream>
 #include <deep_learning_crazyflie/camera_parameters.h>
 #include <sensor_msgs/Imu.h>
+#include <std_msgs/Float32.h>
+#include <geometry_msgs/Vector3Stamped.h>
 
 using namespace sensor_msgs;
 using namespace std;
+using namespace std_msgs;
 
 #define NumberOfFeaturesToUse 100
-#define GyroCompensationThreshold 0.01
+#define GyroCompensationThreshold 0.1
+#define PI 3.14159265358979323846
+#define DEG2RAD ((PI)/(180.0))
+#define PARAM_BOTTOM_FLOW_WEIGHT_NEW 0.3
 
 class OpticalFlowComputer
 {
   string image_topic;
   string imu_topic = "crazyflie/imu";
+  string barometer_topic = "crazyflie/height/filtered"; 
   string image_prefix = "crazyflie/cameras/";
   string image_postfix = "/image" ;
   string topic_name;
@@ -77,16 +88,37 @@ class OpticalFlowComputer
   double position_x_Prev = 0.0;
   double position_y_Prev = 0.0;
 
+  float velocity_x_lp = 0.0f;
+  float velocity_y_lp = 0.0f;
+
   double gyro_pixel_x = 0.0;
   double gyro_pixel_y = 0.0;
-  
+
+  double height = 0.0;
+
+  double ChangeInTime = 0.0;
+int linear_acceleration_z_acc_count = 0;
+double linear_acceleration_z_acc = 0.0;
+ 
   ros::Subscriber ImageSubscriber ; 
   ros::Subscriber ImuSubscriber ; 
+  ros::Subscriber BarometerSubscriber ; 
+
+  double InitialPressure = 0.0; // Average sealevel pressure in mbar
+
+ double InitialAcceleration = 0.0;
+  int PressureAveragingCount = 0;
+  int PressureAveragingThreshold = 100;
+
+double vz_est = 0.0;
+double hz_est = 0.0;
+
+ros::Publisher m_pubHeight;
 
   public :
 
   OpticalFlowComputer(string camera_position, int NumberOfFeatures,  double FL_x,double FL_y, double PP_x,double PP_y,double* DistArray)
-	:cam_matrix(3,3), distortion(1,5)
+	:cam_matrix(3,3), distortion(1,5),m_pubHeight()
   {
 	ros::NodeHandle nh;
 
@@ -102,40 +134,121 @@ class OpticalFlowComputer
 
 	image_topic = image_prefix+camera_position+image_postfix;
 	ImageSubscriber = nh.subscribe(image_topic , 1, &OpticalFlowComputer::CalcOpticalFlow, this);
-	ImuSubscriber = nh.subscribe(imu_topic, 1, &OpticalFlowComputer::IntegrateGyros, this);
+	ImuSubscriber = nh.subscribe(imu_topic, 1, &OpticalFlowComputer::CalcAngularDisplacement, this);
+	BarometerSubscriber = nh.subscribe(barometer_topic, 1, &OpticalFlowComputer::CalcHeight, this);
+	m_pubHeight = nh.advertise<std_msgs::Float32>("crazyflie/heightfiltered",1);
 	
   }
 
 
-  void IntegrateGyros(const sensor_msgs::ImuConstPtr& ImuPacket)
+  void CalcAngularDisplacement(const sensor_msgs::ImuConstPtr& ImuPacket)
   {
 
      double ImuPacket_Timestamp = ImuPacket->header.stamp.toSec();
      double gyro_x = ImuPacket->angular_velocity.x;
      double gyro_y = ImuPacket->angular_velocity.y;
+     double linear_acceleration_z = ImuPacket->linear_acceleration.z - InitialAcceleration;
 
      if (ImuPacket_Timestamp_Prev == 0.0)
      {	
 	ImuPacket_Timestamp_Prev = ImuPacket_Timestamp ;
+	InitialAcceleration = linear_acceleration_z;
 	ROS_INFO("Gyros Initialized");
 	return;
      } 
 
      double dt = ImuPacket_Timestamp - ImuPacket_Timestamp_Prev ;
 
-     if (gyro_x > GyroCompensationThreshold)
+     if (abs(gyro_x) > GyroCompensationThreshold)
      {
      	gyro_pixel_x += gyro_x*dt*focal_length_x;
 
      }
+     else
+     {
+	gyro_pixel_x = 0;
+      }
 
-     if (gyro_y > GyroCompensationThreshold)
+     if (abs(gyro_y) > GyroCompensationThreshold)
      {
 	gyro_pixel_y += gyro_y*dt*focal_length_y;
      
      }
+     else
+     {
+	gyro_pixel_y = 0;
+      }
 
+
+     if (abs(linear_acceleration_z) > 0.05)
+     {
+     	linear_acceleration_z_acc += linear_acceleration_z*dt;
+        linear_acceleration_z_acc_count++;
+        ChangeInTime += dt;
+
+     }
+    
   }
+
+
+
+  void CalcHeight(const geometry_msgs::Vector3StampedConstPtr& PressurePacket)
+  {
+
+/*
+	if(PressureAveragingCount < PressureAveragingThreshold )
+	{
+		InitialPressure += PressurePacket->vector.z;
+
+		PressureAveragingCount++;
+
+		if (PressureAveragingCount == PressureAveragingThreshold)
+		{
+			InitialPressure = InitialPressure/PressureAveragingThreshold;
+			cout<<" Initial Pressure is " << InitialPressure;
+			
+		}
+				
+		return;
+	}
+
+	//float coef = 1.0f / 5.255f;
+	//double Pressure = PressurePacket->data;
+	//height = 44330.0f * (1.0f - (float)pow((Pressure/InitialPressure), coef));
+
+        height = PressurePacket->vector.z - InitialPressure;
+
+        if(linear_acceleration_z_acc_count > 0)
+	{
+		vz_est += (linear_acceleration_z_acc/linear_acceleration_z_acc_count)*ChangeInTime;
+		hz_est +=  vz_est*ChangeInTime;
+
+
+		float k_vz = -0.15;
+		float k_h_est= -0.92;
+
+		vz_est += k_vz*(hz_est -height);
+		hz_est += k_h_est*(hz_est- height);
+
+		std_msgs::Float32 msg;
+		msg.data = hz_est;
+
+		m_pubHeight.publish(msg);
+
+	     	linear_acceleration_z_acc = 0.0;
+		linear_acceleration_z_acc_count = 0;
+		ChangeInTime = 0.0;
+		
+
+	
+        }
+
+ 	//ROS_INFO("Height is %f ", height);
+
+*/
+
+	height = PressurePacket->vector.z;
+   }
 
 
   void CalcOpticalFlow(const sensor_msgs::ImageConstPtr& Image )
@@ -163,6 +276,10 @@ class OpticalFlowComputer
 	    }
 
 	 cv::Mat InputImage = Image_Ptr->image ;
+  
+	// cv::Mat InputImage = cv::Mat(60, 80, CV_8UC3, cv::Scalar(0, 0, 0)) ;
+
+         //resize(Image_Ptr->image,InputImage,InputImage.size(),0,0);
 	//cv::Mat InputImage = cv::Mat(OriginalImage.rows, OriginalImage.cols, CV_8UC3, cv::Scalar(0, 0, 0));
 	// cvtColor(OriginalImage, InputImage, CV_BGR2GRAY);
 
@@ -244,7 +361,7 @@ class OpticalFlowComputer
 
 			}
 
-			if (meancount) {
+			if (meancount ){//&& height > 0.0) {
 				pixel_flow_x_integral /= meancount;
 				pixel_flow_y_integral /= meancount;
 
@@ -254,21 +371,28 @@ class OpticalFlowComputer
 				double flow_x_ang = atan2(pixel_flow_x_integral,focal_length_x);
 				double flow_y_ang = atan2(pixel_flow_y_integral,focal_length_y);
 
-				position_x = position_x + flow_x_ang + gyro_pixel_x;
-				position_y = position_y + flow_y_ang + gyro_pixel_y;
+				//position_x = position_x + height*(flow_x_ang - (gyro_pixel_y/focal_length_y));
+				//position_y = position_y + height*(flow_y_ang + (gyro_pixel_x/focal_length_x));
 
-				double rate_x = (position_x - position_x_Prev)/delta_time;
-				double rate_y = (position_y - position_y_Prev)/delta_time;
-				
-				ROS_INFO("x value =  %f  & %f ,y value = %f & %f  , quality = %f ", position_x,rate_x,position_y,rate_y, flow_quality);
+				double comp_flow_x = (pixel_flow_x_integral/focal_length_x + gyro_pixel_y/(focal_length_y*500)) ;
+				double comp_flow_y = (pixel_flow_y_integral/focal_length_y - gyro_pixel_x/(focal_length_x*500));
+
+				position_x = position_x + comp_flow_x;//* delta_time;
+				position_y = position_y + comp_flow_y;// * delta_time;
+
+			
+				ROS_INFO("x value =  %f ,y value = %f  , height = %f, gyro = %f & %f ", position_x,position_y, height, (gyro_pixel_y/focal_length_y),(gyro_pixel_x/focal_length_x));
+
+        			gyro_pixel_x = 0.0;
+  				gyro_pixel_y = 0.0;
 			}
 
 		} else {
+
+			velocity_x_lp = (1.0f - PARAM_BOTTOM_FLOW_WEIGHT_NEW) * velocity_x_lp;
+			velocity_y_lp = (1.0f - PARAM_BOTTOM_FLOW_WEIGHT_NEW) * velocity_y_lp;
 			ROS_ERROR("No valid measurements");
 		}
-
-
-
 	}
 
 	for (int i = 0; i < updateVector.size(); i++) {
@@ -285,6 +409,8 @@ class OpticalFlowComputer
 	Image_Timestamp_Prev = Image_Timestamp ;
 	position_x_Prev = position_x;
 	position_y_Prev = position_y;
+
+
   }
  
 };
