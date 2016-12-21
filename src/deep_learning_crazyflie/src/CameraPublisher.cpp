@@ -34,6 +34,7 @@
 #include <image_transport/image_transport.h>
 #include <camera_info_manager/camera_info_manager.h>
 #include <deep_learning_crazyflie/camera_parameters.h>
+#include <opencv2/videostab.hpp>
 
 using namespace cv;
 using namespace std;
@@ -51,17 +52,22 @@ class CameraPublisher
   int camera_input_id ;
   VideoCapture cap;
   Mat InputImage;
+  Mat UndistortedImage;
+  Mat DeNoisedImage;
   image_transport::CameraPublisher camera_pub;
   string prefix = "crazyflie/cameras/";
   string postfix = "/image" ;
   string camera_topic_name ;
   sensor_msgs::CameraInfo* camera_info;
   sensor_msgs::CameraInfoPtr camera_info_ptr;
+  cv::Mat_<float> camera_matrix;
+  cv::Mat_<float> distortion_params;
 
   public:
 
   //Use the constructor to initialize variables
   CameraPublisher(string position, int id, image_transport::ImageTransport ImageTransporter, double FL_X ,double PP_X ,double FL_Y, double PP_Y, double* DistArray)
+	:camera_matrix(3,3), distortion_params(1,5)
   {
 	camera_position = position ;
 	camera_input_id = id ;	
@@ -108,7 +114,8 @@ class CameraPublisher
 	for (int i = 0; i < 5; i++)
 	    camera_info->D.push_back (DistArray[i]);
 
-
+	camera_matrix << FL_X, 0, PP_X, 0, FL_Y, PP_Y, 0, 0, 1 ;
+	distortion_params << DistArray[0],DistArray[1],DistArray[2],DistArray[3],DistArray[4];
 
 
 
@@ -141,8 +148,11 @@ class CameraPublisher
 	else
 	{
 	    sensor_msgs::ImagePtr msg;
-
-	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", InputImage).toImageMsg();
+	    //undistort(InputImage, UndistortedImage, camera_matrix, distortion_params); 
+	    GaussianBlur(InputImage,InputImage, Size(5,5),0,0);
+	    medianBlur(InputImage,DeNoisedImage,5);
+	    //fastNlMeansDenoisingColored(InputImage,DeNoisedImage,3,3,5,11);
+	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", DeNoisedImage).toImageMsg();
 	    msg->header.stamp = ros::Time::now() ;
 	    msg->header.frame_id = camera_position+"_camera";
 
@@ -168,7 +178,18 @@ int main( int argc, char** argv )
     image_transport::ImageTransport it(nh);
  
     int camera_id;
-    nh.param<int>("crazyflie_camera_node/cameras/bottom/id", camera_id, 0);
+	
+    try
+    {
+        camera_id = atoi(argv[1]);
+	cout<<"\n Camera ID = "<<camera_id;
+    }
+
+    catch (...)
+    {
+	cout << "Camera ID missing in Command Line";
+	exit(0);
+     }
 
     //Create a publisher for the bottom facing camera
     CameraPublisher bottom_camera_pub("bottom", camera_id, it, FocalLength_X, FocalLength_Y, PrincipalPoint_X, PrincipalPoint_Y, Distortion);
