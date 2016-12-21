@@ -1,7 +1,45 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+*.pyc
 
+# Precompiled Headers
+*.gch
+*.pch
 
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Vim Temporary Files
 *~
-devel/
+
+# Vim Swap Files
+*.swp
+*.swo
+
+# Catkin & CMake Cache Folders
 build/
-devel_isolated/
 build_isolated/
+
+# Catkin Built Target Storage Folders
+devel/
+devel_isolated/
