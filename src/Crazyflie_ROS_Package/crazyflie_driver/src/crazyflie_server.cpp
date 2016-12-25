@@ -90,7 +90,7 @@ public:
       m_pubOrientation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/orientation/euler", 10);
       m_pubOrientationQuaternion = n.advertise<geometry_msgs::QuaternionStamped>(tf_prefix + "/orientation/quaternion", 10);
       m_pubGravity = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/gravity_direction", 10);
-      m_pubAccZBase = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/acc_z_base", 10);
+      m_pubAccZBase = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/accel/base_z", 10);
       m_pubInitialized = n.advertise<std_msgs::UInt8>(tf_prefix + "/sensors/initialized", 10);
     }
     if (m_enable_logging_temperature) {
