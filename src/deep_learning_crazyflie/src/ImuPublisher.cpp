@@ -168,7 +168,7 @@ int main(int argc, char **argv)
 
   message_filters::Subscriber<geometry_msgs::Vector3Stamped> gyro_sub(n, "crazyflie/gyro", 1);
   message_filters::Subscriber<geometry_msgs::Vector3Stamped> accel_sub(n, "crazyflie/accel", 1);
-  message_filters::Subscriber<geometry_msgs::Vector3Stamped> orientation_sub(n, "crazyflie/orientation", 1);
+  message_filters::Subscriber<geometry_msgs::Vector3Stamped> orientation_sub(n, "crazyflie/orientation/euler", 1);
   message_filters::Subscriber<geometry_msgs::Vector3Stamped> height_sub(n, "crazyflie/height", 1);
  
   typedef sync_policies::ApproximateTime< geometry_msgs::Vector3Stamped, geometry_msgs::Vector3Stamped, geometry_msgs::Vector3Stamped, geometry_msgs::Vector3Stamped> MySyncPolicy;

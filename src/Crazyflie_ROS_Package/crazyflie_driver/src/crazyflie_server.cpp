@@ -6,10 +6,12 @@
 #include "std_srvs/Empty.h"
 #include "geometry_msgs/Twist.h"
 #include "geometry_msgs/Vector3Stamped.h"
+#include "geometry_msgs/QuaternionStamped.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/Temperature.h"
 #include "sensor_msgs/MagneticField.h"
 #include "std_msgs/Float32.h"
+#include "std_msgs/UInt8.h"
 
 //#include <regex>
 #include <thread>
@@ -64,6 +66,10 @@ public:
     , m_pubGyro()
     , m_pubAccel()
     , m_pubOrientation()
+    , m_pubOrientationQuaternion()
+    , m_pubGravity()
+    , m_pubAccZBase()
+    , m_pubInitialized()
     , m_pubTemp()
     , m_pubMag()
     , m_pubPressure()
@@ -81,7 +87,11 @@ public:
     if (m_enable_logging_imu) {
       m_pubGyro = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/gyro", 10);
       m_pubAccel = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/accel", 10);
-      m_pubOrientation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/orientation", 10);
+      m_pubOrientation = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/orientation/euler", 10);
+      m_pubOrientationQuaternion = n.advertise<geometry_msgs::QuaternionStamped>(tf_prefix + "/orientation/quaternion", 10);
+      m_pubGravity = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/gravity_direction", 10);
+      m_pubAccZBase = n.advertise<geometry_msgs::Vector3Stamped>(tf_prefix + "/accel/base_z", 10);
+      m_pubInitialized = n.advertise<std_msgs::UInt8>(tf_prefix + "/sensors/initialized", 10);
     }
     if (m_enable_logging_temperature) {
       m_pubTemp = n.advertise<sensor_msgs::Temperature>(tf_prefix + "/temperature", 10);
@@ -134,6 +144,21 @@ private:
     float height;
     uint16_t thrust;
     float asl;
+  } __attribute__((packed));
+
+  struct logSensorFusion {
+    float qw;
+    float qx;
+    float qy;
+    float qz;
+    float accZbase;
+    uint8_t isInit;
+  } __attribute__((packed));
+
+  struct logGravityVector{
+    float grav_x;
+    float grav_y;
+    float grav_z;
   } __attribute__((packed));
 
 
@@ -276,6 +301,8 @@ private:
 
     std::unique_ptr<LogBlock<logImu> > logBlockImu;
     std::unique_ptr<LogBlock<logOrientation> > logBlockOrientation;
+    std::unique_ptr<LogBlock<logSensorFusion> > logBlockSensorFusion;
+    std::unique_ptr<LogBlock<logGravityVector> > logBlockGravityVector;
     std::unique_ptr<LogBlock<log2> > logBlock2;
     std::vector<std::unique_ptr<LogBlockGeneric> > logBlocksGeneric(m_logBlocks.size());
     if (m_enableLogging) {
@@ -315,9 +342,34 @@ private:
           }, cb3));
         logBlockOrientation->start(1); // 10ms
 
+	std::function<void(uint32_t, logSensorFusion*)> cb4 = std::bind(&CrazyflieROS::onSensorFusionData, this, std::placeholders::_1, std::placeholders::_2);
+
+        logBlockSensorFusion.reset(new LogBlock<logSensorFusion>(
+          &m_cf,{
+            {"sensorfusion6", "qw"},
+            {"sensorfusion6", "qx"},
+            {"sensorfusion6", "qy"},
+            {"sensorfusion6", "qz"},
+            {"sensorfusion6", "accZbase"},
+	    {"sensorfusion6", "isInit"},
+ 
+          }, cb4));
+        logBlockSensorFusion->start(1); // 10ms
+
+	std::function<void(uint32_t, logGravityVector*)> cb5 = std::bind(&CrazyflieROS::onGravityVectorData, this, std::placeholders::_1, std::placeholders::_2);
+
+        logBlockGravityVector.reset(new LogBlock<logGravityVector>(
+          &m_cf,{
+            {"sensorfusion6", "gravityX"},
+            {"sensorfusion6", "gravityY"},
+            {"sensorfusion6", "gravityZ"},
+ 
+          }, cb5));
+        logBlockGravityVector->start(1); // 10ms
+
       }
 
-/*
+
       if (   m_enable_logging_temperature
           || m_enable_logging_magnetic_field
           || m_enable_logging_pressure
@@ -336,7 +388,7 @@ private:
           }, cb2));
         logBlock2->start(1); // 10ms
       }
-*/
+
       // custom log blocks
       size_t i = 0;
       for (auto& logBlock : m_logBlocks)
@@ -425,7 +477,7 @@ private:
 
   void onOrientationData(uint32_t time_in_ms, logOrientation* data) {
 
-   ROS_INFO("Roll = %f , Pitch = %f , Yaw = %f, Height = %f, Thrust = %d, ASL = %f",data->pitch,data->roll,data->yaw,(data->height),data->thrust, data->asl);
+   //ROS_INFO("Roll = %f , Pitch = %f , Yaw = %f, Height = %f, Thrust = %d, ASL = %f",data->pitch,data->roll,data->yaw,(data->height),data->thrust, data->asl);
 
    geometry_msgs::Vector3Stamped msg;
 
@@ -447,6 +499,66 @@ private:
      msg.vector.z = data->yaw ;
 
      m_pubOrientation.publish(msg);
+
+  }
+
+  void onSensorFusionData(uint32_t time_in_ms, logSensorFusion* data) {
+
+   ROS_INFO("qw = %f , qx = %f , qy = %f, qz = %f, accZbase = %f, isInit = %d",data->qw,data->qx,data->qy,(data->qz),data->accZbase, data->isInit);
+
+   geometry_msgs::Vector3Stamped msg;
+   geometry_msgs::QuaternionStamped quat_msg;
+   std_msgs::UInt8 init_msg;
+
+   if (m_use_ros_time) {
+      msg.header.stamp = ros::Time::now();
+      quat_msg.header.stamp = ros::Time::now();
+
+    } else {
+      msg.header.stamp = ros::Time(time_in_ms / 1000.0);
+      quat_msg.header.stamp = ros::Time(time_in_ms / 1000.0);
+    }
+     msg.header.frame_id = m_tf_prefix + "/base_link";
+     quat_msg.header.frame_id = m_tf_prefix + "/base_link";
+
+     
+      // hPa (=mbar)
+
+     msg.vector.z = data->accZbase ;
+
+     m_pubAccZBase.publish(msg);
+
+     quat_msg.quaternion.x = data->qx;
+     quat_msg.quaternion.y = data->qy;
+     quat_msg.quaternion.z = data->qz;
+     quat_msg.quaternion.w = data->qw;
+
+     m_pubOrientationQuaternion.publish(quat_msg);
+
+     init_msg.data = data->isInit;
+
+     m_pubInitialized.publish(init_msg);     
+
+  }
+
+ void onGravityVectorData(uint32_t time_in_ms, logGravityVector* data) {
+
+   ROS_INFO("Grav X = %f , Grav Y = %f , Grav Z = %f", data->grav_x, data->grav_y, data->grav_z);
+
+   geometry_msgs::Vector3Stamped msg;
+
+   if (m_use_ros_time) {
+      msg.header.stamp = ros::Time::now();
+    } else {
+      msg.header.stamp = ros::Time(time_in_ms / 1000.0);
+    }
+     msg.header.frame_id = m_tf_prefix + "/base_link";
+
+     msg.vector.x = data->grav_x ;
+     msg.vector.y = data->grav_y ;
+     msg.vector.z = data->grav_z ;
+
+     m_pubGravity.publish(msg);
 
   }
 
@@ -553,6 +665,10 @@ private:
   ros::Publisher m_pubAccel;
   ros::Publisher m_pubGyro;
   ros::Publisher m_pubOrientation;
+  ros::Publisher m_pubOrientationQuaternion;
+  ros::Publisher m_pubGravity;
+  ros::Publisher m_pubAccZBase;
+  ros::Publisher m_pubInitialized;
   ros::Publisher m_pubTemp;
   ros::Publisher m_pubMag;
   ros::Publisher m_pubPressure;
