@@ -1,5 +1,0 @@
-rotors_simulator/rotors_evaluation
-/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_evaluation/share/rotors_evaluation/cmake/rotors_evaluationConfig-version.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/rotors_evaluation/cmake/rotors_evaluationConfig-version.cmake
-/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_evaluation/share/rotors_evaluation/cmake/rotors_evaluationConfig.cmake /home/avinash/Deep_Learning_Crazyflie/devel/share/rotors_evaluation/cmake/rotors_evaluationConfig.cmake
-/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_evaluation/lib/pkgconfig/rotors_evaluation.pc /home/avinash/Deep_Learning_Crazyflie/devel/lib/pkgconfig/rotors_evaluation.pc
-/home/avinash/Deep_Learning_Crazyflie/devel/.private/rotors_evaluation/lib/python2.7/dist-packages/rosbag_tools/__init__.py /home/avinash/Deep_Learning_Crazyflie/devel/lib/python2.7/dist-packages/rosbag_tools/__init__.py

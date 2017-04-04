@@ -1,0 +1,14 @@
+#
+# Definition of all trackable objects
+# Identifier corresponds to Trackable ID set in Tracking Tools
+#
+rigid_bodies:
+    '1':
+        pose: crazyflie/ground_truth/pose_3d
+        pose2d: crazyflie/ground_truth/pose_2d
+        child_frame_id: crazyflie/base_link
+        parent_frame_id: world
+        use_new_coordinates: false
+
+optitrack_config:
+        multicast_address: 224.0.0.1

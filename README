@@ -64,7 +64,7 @@ in order to do althold, there are some complicated commands you have to send bec
 You have to increase thrust till you hover. Then enable althold by setting the rosparam "crazyflie/althold" and make your thrust zero as soon as you enter this mode. Then increase or decrease your thrust to change your height.
 
 
-If you wanna use a camera. you can run the crazyflie_camera_node  justr change the video id depending on your system config.
+If you wanna use a camera. you can run the crazyflie_camera_node  just change the video id depending on your system config.
 
 To run optical flow on this camera, you can run the crazyflie_opticalflow_node
 
@@ -74,3 +74,15 @@ If you wanna tweak the firmware and official ros package by yourself. You can cl
 https://github.com/bitcraze/crazyflie-firmware
 
 https://github.com/whoenig/crazyflie_ros
+
+OptiTrack Integration
+
+Requires an optitrack system of atleast 4 cameras connected to a Windows workstation through the software Motive v1.7.5 . Calibrate the optitrack system and create a rigid body from the markers mounted on Crazyflie ( Requires atleast 3 markers for 3d Pose Estimation ) through the Motive Software. Using rigid body properties set the trackable ID of this rigid body as 1. Open streaming properties and enable streaming and change the multicast IP address to Linux Workstation's (to which Crazyflie is connected via CrazyRadio) IP address. 
+
+Now on your linux workstation run the following
+roslaunch mocap_optitrack mocap.launch
+
+This will publish the ground truth pose of Crazyflie to the following topics
+
+" crazyflie/ground_truth/pose_3d "
+" crazyflie/ground_truth/pose_2d "
