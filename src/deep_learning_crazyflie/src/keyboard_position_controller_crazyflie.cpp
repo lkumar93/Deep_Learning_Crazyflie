@@ -144,10 +144,9 @@ void TeleopCrazyflie::pidReset()
 void TeleopCrazyflie::getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket)
 {
 
-	//Convert mm to meters, current_position_z is height
-	current_position_x = OptiTrackPacket->pose.position.x/1000.0;
-	current_position_y = OptiTrackPacket->pose.position.z/1000.0;
-	current_position_z = OptiTrackPacket->pose.position.y/1000.0;
+	current_position_x = OptiTrackPacket->pose.position.x;
+	current_position_y = OptiTrackPacket->pose.position.y;
+	current_position_z = OptiTrackPacket->pose.position.z;
 
 	if(!initialized)
 	{
