@@ -155,7 +155,7 @@ include_directories(
  add_executable(crazyflie_camera_node src/CameraPublisher.cpp)
  add_executable(crazyflie_opticalflow_node src/CalcOpticalFlow.cpp)
  add_executable(crazyflie_imu_node src/ImuPublisher.cpp)
- add_executable(crazyflie_pos_ctrl_node src/keyboard_position_controller_crazyflie.cpp)
+ add_executable(crazyflie_position_control_node src/position_controller_crazyflie.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -165,7 +165,7 @@ add_dependencies(deep_learning_crazyflie_node deep_learning_crazyflie_generate_m
 add_dependencies(crazyflie_camera_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS})
 add_dependencies(crazyflie_opticalflow_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} ${Eigen_LIBRARIES} )
 add_dependencies(crazyflie_imu_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} ${Eigen_LIBRARIES} )
-add_dependencies(crazyflie_pos_ctrl_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} )
+add_dependencies(crazyflie_position_control_node ${PROJECT_NAME}_EXPORTED_TARGETS ${catkin_EXPORTED_TARGETS} )
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(deep_learning_crazyflie_node
 #   ${catkin_LIBRARIES}
@@ -175,7 +175,7 @@ target_link_libraries(crazyflie_teleop_node  ${catkin_LIBRARIES})
 target_link_libraries(crazyflie_camera_node  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} )
 target_link_libraries(crazyflie_opticalflow_node  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${klt_feature_tracker_LIBS} )
 target_link_libraries(crazyflie_imu_node  ${catkin_LIBRARIES})
-target_link_libraries(crazyflie_pos_ctrl_node  ${catkin_LIBRARIES})
+target_link_libraries(crazyflie_position_control_node  ${catkin_LIBRARIES})
 
 #############
 ## Install ##
