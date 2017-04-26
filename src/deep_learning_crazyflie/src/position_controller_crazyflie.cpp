@@ -163,10 +163,11 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	current_position_z = OptiTrackPacket->pose.position.z;
 
 	geometry_msgs::PointStamped position_msg;
+	position_msg.header.frame_id = OptiTrackPacket->header.frame_id;
 	position_msg.header.stamp = OptiTrackPacket->header.stamp;
 	position_msg.point.x = current_position_x;
-	position_msg.point.y = current_position_y;	
-	position_msg.point.z = current_position_z;	
+	position_msg.point.y = current_position_z;	
+	position_msg.point.z = current_position_y;	
 
 	point_pub_.publish(position_msg);
 
@@ -187,7 +188,7 @@ void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstP
 	goal_x = cmd_pos->linear.x;
 	goal_y = cmd_pos->linear.y;
 	goal_z = cmd_pos->linear.z;
-        //ROS_INFO("Z- %f, Y - %f ,X- %f, yawrate - %f",current_position_z,current_position_y, current_position_x, yawrate);
+      
 }
 
 void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state)
