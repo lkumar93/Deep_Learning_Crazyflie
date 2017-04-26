@@ -1,6 +1,8 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PointStamped.h>
+#include <std_msgs/Int32.h>
 #include <signal.h>
 #include <termios.h>
 #include <stdio.h>
@@ -19,17 +21,17 @@
 #define KEYCODE_L 0x6C
 #define KEYCODE_P 0x70
 
-#define KP_X 2.0
-#define KI_X 0.0
-#define KD_X 0.0
+#define KP_X 10.0
+#define KI_X 2.0
+#define KD_X 2.0
 
-#define KP_Y 2.0
-#define KI_Y 0.0
-#define KD_Y 0.0
+#define KP_Y 10.0
+#define KI_Y 2.0
+#define KD_Y 2.0
 
-#define KP_Z 2.0
-#define KI_Z 0.0
-#define KD_Z 0.0
+#define KP_Z 1800000.0
+#define KI_Z 1800.0
+#define KD_Z 18000.0
 
 #define INTEGRATOR_MAX_Z 1000.0
 #define INTEGRATOR_MIN_Z -1000.0
@@ -55,6 +57,7 @@
 #define LAND 3
 #define EMERGENCY 4
 
+#include <thread> 
 
 using namespace geometry_msgs;
 using namespace std;
@@ -64,32 +67,34 @@ struct termios cooked, raw;
 
 
 
-class TeleopCrazyflie
+class CrazyfliePositionController
  {
 
  public:
-   TeleopCrazyflie();
+   CrazyfliePositionController();
    void keyLoop();
    void getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket);
+   void cmdSubscriber(const geometry_msgs::TwistConstPtr& cmd_pos);
+   void stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state);
    void takeoff(const ros::TimerEvent&);
    void land(const ros::TimerEvent&);
    void pos_ctrl(const ros::TimerEvent&);
    void emergency(const ros::TimerEvent&);
    void pidReset();
- 
+   void run();
+
+  
  private:
    
    ros::NodeHandle nh_;
    double yawrate, thrust;
    
-   ros::Publisher vel_pub_;
-   ros::Subscriber ground_truth_sub_;
+   ros::Publisher vel_pub_, point_pub_;
+   ros::Subscriber ground_truth_sub_,cmd_sub_,state_sub_;
 
    geometry_msgs::Twist cmd;
-
-   ros::Timer takeoff_timer,land_timer, pos_ctrl_timer, emergency_timer;
-
-
+   ros::Timer takeoff_timer,land_timer, pos_ctrl_timer, emergency_timer,keyloop_timer;
+ 
    // In m
 
    float initial_position_x;
@@ -104,7 +109,7 @@ class TeleopCrazyflie
 
    bool initialized;
 
-   bool state;
+   int state;
 
    PID pidX;
    PID pidY;
@@ -114,11 +119,17 @@ class TeleopCrazyflie
  };
 
 
-TeleopCrazyflie::TeleopCrazyflie():
+CrazyfliePositionController::CrazyfliePositionController():
   goal_x(0.0),
   goal_y(0.0),
   yawrate(0.0),
   goal_z(0.15),
+  current_position_x(0.0),
+  current_position_y(0.0),
+  current_position_z(0.0),
+  initial_position_x(0.0),
+  initial_position_y(0.0),
+  initial_position_z(0.0),
   thrust(0.0),
   state(WAITING),
   pidX(KP_X, KD_X, KD_X, MIN_OUTPUT_X, MAX_OUTPUT_X, INTEGRATOR_MIN_X, INTEGRATOR_MAX_X, "x"),
@@ -126,43 +137,79 @@ TeleopCrazyflie::TeleopCrazyflie():
   pidZ(KP_Z, KD_Z, KD_Z, MIN_OUTPUT_Z, MAX_OUTPUT_Z, INTEGRATOR_MIN_Z, INTEGRATOR_MAX_Z, "z")
 {
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
+  point_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/position", 1);
   initialized = false;
-  ground_truth_sub_ = nh_.subscribe("crazyflie/ground_truth/pose_3d" , 1, &TeleopCrazyflie::getGroundTruth, this);
-  takeoff_timer = nh_.createTimer(ros::Duration(0.1), &TeleopCrazyflie::takeoff, this);
-  land_timer = nh_.createTimer(ros::Duration(0.1), &TeleopCrazyflie::land, this);
-  pos_ctrl_timer = nh_.createTimer(ros::Duration(0.1), &TeleopCrazyflie::pos_ctrl, this);
-  emergency_timer = nh_.createTimer(ros::Duration(0.1), &TeleopCrazyflie::emergency, this);
+  ground_truth_sub_ = nh_.subscribe("/crazyflie/ground_truth/pose_3d" , 10, &CrazyfliePositionController::getGroundTruth, this);
+  cmd_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_pos" , 10, &CrazyfliePositionController::cmdSubscriber, this);
+  state_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_state" , 10, &CrazyfliePositionController::stateSubscriber, this);
+  takeoff_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::takeoff, this);
+  land_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::land, this);
+  pos_ctrl_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::pos_ctrl, this);
+  emergency_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::emergency, this);
 }
 
-void TeleopCrazyflie::pidReset()
+void CrazyfliePositionController::pidReset()
     {
         pidX.reset();
         pidZ.reset();
         pidZ.reset();
     }
 
-void TeleopCrazyflie::getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket)
+void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket)
 {
 
 	current_position_x = OptiTrackPacket->pose.position.x;
 	current_position_y = OptiTrackPacket->pose.position.y;
 	current_position_z = OptiTrackPacket->pose.position.z;
 
+	geometry_msgs::PointStamped position_msg;
+	position_msg.header.stamp = OptiTrackPacket->header.stamp;
+	position_msg.point.x = current_position_x;
+	position_msg.point.y = current_position_y;	
+	position_msg.point.z = current_position_z;	
+
+	point_pub_.publish(position_msg);
+
 	if(!initialized)
 	{
 		initial_position_x = current_position_x;
 		initial_position_y = current_position_y;
 		initial_position_z = current_position_z;
+		initialized = true;
 	}
+
+        //ROS_INFO("Z- %f, Y - %f ,X- %f, yawrate - %f",current_position_z,current_position_y, current_position_x, yawrate);
 }
 
-void TeleopCrazyflie::takeoff(const ros::TimerEvent& e)
+void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstPtr& cmd_pos)
+{
+
+	goal_x = cmd_pos->linear.x;
+	goal_y = cmd_pos->linear.y;
+	goal_z = cmd_pos->linear.z;
+        //ROS_INFO("Z- %f, Y - %f ,X- %f, yawrate - %f",current_position_z,current_position_y, current_position_x, yawrate);
+}
+
+void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state)
+{
+	state = cmd_state->data;
+	if(state == TAKE_OFF)
+	{
+		initial_position_x = current_position_x;
+		initial_position_y = current_position_y;
+		initial_position_z = current_position_z;
+
+	}
+	//ROS_INFO("%d",state);
+}
+
+void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 {
    if(initialized && state==TAKE_OFF)
    {
 	float dt = e.current_real.toSec() - e.last_real.toSec();
 
- 	if (current_position_z > initial_position_z + 0.05 || thrust > 50000)
+ 	if (current_position_z > initial_position_z + 0.1  || thrust > 25000)
          {
             pidReset();
             pidZ.setIntegral(thrust / pidZ.ki());
@@ -171,6 +218,7 @@ void TeleopCrazyflie::takeoff(const ros::TimerEvent& e)
         }
         else
         {
+	    ROS_DEBUG("TAKING OFF");
             thrust += 10000 * dt;
             cmd.linear.x = 0.0;
             cmd.linear.y = 0.0;
@@ -183,10 +231,11 @@ void TeleopCrazyflie::takeoff(const ros::TimerEvent& e)
 
 }
 
-void TeleopCrazyflie::land(const ros::TimerEvent& e)
+void CrazyfliePositionController::land(const ros::TimerEvent& e)
 {
    if(initialized && state==LAND)
    {
+	    ROS_DEBUG("LANDING");
 	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
             cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
             cmd.angular.y = yawrate;
@@ -201,24 +250,33 @@ void TeleopCrazyflie::land(const ros::TimerEvent& e)
 
 }
 
+void CrazyfliePositionController::run()
+{
+	 ros::spin();
+}
 
-void TeleopCrazyflie::pos_ctrl(const ros::TimerEvent& e)
+
+
+void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 {
    if(initialized && state==POS_CTRL)
    {
+	    ROS_INFO("POSITION CONTROL :");
 	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
             cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
             cmd.angular.y = yawrate;
             cmd.linear.z = pidZ.update(current_position_z, initial_position_z + goal_z);
+	    ROS_INFO("POSITION CONTROL : x= %f, y= %f, z= %f ",cmd.linear.x,cmd.linear.y,cmd.linear.z);
             vel_pub_.publish(cmd);
    }
 
 }
 
-void TeleopCrazyflie::emergency(const ros::TimerEvent& e)
+void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
 {
    if(state==EMERGENCY)
    {
+	    ROS_DEBUG("EMERGENCY"); 
 	    cmd.linear.x = 0.0;
             cmd.linear.y = 0.0;
             cmd.angular.y = 0.0;
@@ -230,137 +288,12 @@ void TeleopCrazyflie::emergency(const ros::TimerEvent& e)
 }
 
 
-void TeleopCrazyflie::keyLoop()
-{
-  char c;
-  bool dirty=false;
-
-  // get the console in raw mode                                                              
-  tcgetattr(kfd, &cooked);
-  memcpy(&raw, &cooked, sizeof(struct termios));
-  raw.c_lflag &=~ (ICANON | ECHO);
-  // Setting a new line, then end of file                         
-  raw.c_cc[VEOL] = 1;
-  raw.c_cc[VEOF] = 2;
-  tcsetattr(kfd, TCSANOW, &raw);
-  double goal_z_offset,goal_y_offset,goal_x_offset,yawrate_offset;
-
-  puts("Reading from keyboard");
-  puts("---------------------------");
-  puts("Use arrow keys to move the crazyflie.");
-  puts("T - TakeOff.");
-
-  for(;;)
-  {
-    // get the next event from the keyboard  
-    if(read(kfd, &c, 1) < 0)
-    {
-      perror("read():");
-      exit(-1);
-    }
-
-   ROS_INFO("value: 0x%02X\n", c);
-   //ros::Duration(0.05).sleep();
-   ROS_INFO("Z- %f, Y - %f ,X- %f, yawrate - %f",current_position_z,current_position_y, current_position_x, yawrate);
-
-   yawrate_offset = 1.0;
-   goal_z_offset = 0.05;
-   goal_y_offset = 0.05;
-   goal_x_offset = 0.05;
-
-    switch(c)
-    {
-      case KEYCODE_T:
-        ROS_DEBUG("TAKING OFF");
-	state = TAKE_OFF;
-        break;
-
-      case KEYCODE_L:
-        ROS_DEBUG("LAND");
-	state = LAND;
-        break;
-
-      case KEYCODE_P:
-        ROS_DEBUG("POSITION CONTROL");
-	state = POS_CTRL;
-        break;
-
-      case KEYCODE_Q:
-        ROS_DEBUG("STOP");
-	state = EMERGENCY;
-        break;
-
-      case KEYCODE_LA:
-        ROS_DEBUG("LEFT");
-        goal_y -= goal_y_offset;
-        ROS_INFO("goal_y = %f", goal_y);
-        break;
-
-      case KEYCODE_RA:
-        ROS_DEBUG("RIGHT");
-        goal_y += goal_y_offset;
-        ROS_INFO("goal_y = %f", goal_y);
-        break;
-
-      case KEYCODE_UA:
-        ROS_DEBUG("UP");
-        goal_x += goal_x_offset;
-        ROS_INFO("goal_x = %f", goal_x);
-        break;
-
-      case KEYCODE_DA:
-        ROS_DEBUG("DOWN");
-        goal_x -= goal_x_offset;
-        ROS_INFO("goal_x = %f", goal_x);
-        break;
-
-      case KEYCODE_A:
-        ROS_DEBUG("LEFT_A");
-        yawrate -= yawrate_offset;
-        ROS_INFO("yawrate = %f", yawrate);
-        break;
-
-      case KEYCODE_D:
-        ROS_DEBUG("RIGHT_D");
-        yawrate += yawrate_offset;
-        ROS_INFO("yawrate = %f", yawrate);
-        break;
-
-      case KEYCODE_W:
-        ROS_DEBUG("UP_W");
-        goal_z += goal_z_offset;
-        ROS_INFO("goal_z = %f", goal_z);
-        break;
-
-      case KEYCODE_S:
-        ROS_DEBUG("DOWN_S");
-        goal_z -= goal_z_offset;
-        ROS_INFO("goal_z = %f", goal_z);
-        break;
-
-    }
-  }
-  return;
-}
-
-
-
-void quit(int sig)
-{
-   tcsetattr(kfd, TCSANOW, &cooked);
-   ros::shutdown();
-   exit(0);
-}
-
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "crazyflie_pos_ctrl_node");
-  TeleopCrazyflie teleop_crazyflie;
+  CrazyfliePositionController crazyflie_position_controller;
+  crazyflie_position_controller.run();
 
-  signal(SIGINT,quit);
-
-  teleop_crazyflie.keyLoop();
-  
   return(0);
 }
 
