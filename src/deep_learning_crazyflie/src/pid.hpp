@@ -39,9 +39,34 @@ public:
         m_integral = integral;
     }
 
+    void setKp(float kp_val)
+    {
+        m_kp = kp_val;
+    }
+
+    void setKd(float kd_val)
+    {
+        m_kd = kd_val;
+    }
+
+    void setKi(float ki_val)
+    {
+        m_ki = ki_val;
+    }
+
     float ki() const
     {
         return m_ki;
+    }
+
+    float kp() const
+    {
+        return m_kp;
+    }
+
+    float kd() const
+    {
+        return m_kd;
     }
 
     float update(float value, float targetValue)
