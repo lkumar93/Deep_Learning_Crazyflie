@@ -8,19 +8,6 @@
 #include <stdio.h>
 #include "pid.hpp"
 
-#define KEYCODE_RA 0x43
-#define KEYCODE_LA 0x44
-#define KEYCODE_UA 0x41
-#define KEYCODE_DA 0x42
-#define KEYCODE_Q 0x71
-#define KEYCODE_W 0x77
-#define KEYCODE_S 0x73
-#define KEYCODE_A 0x61
-#define KEYCODE_D 0x64
-#define KEYCODE_T 0x74
-#define KEYCODE_L 0x6C
-#define KEYCODE_P 0x70
-
 #define KP_X 0.0
 #define KI_X 0.0
 #define KD_X 0.0
@@ -173,7 +160,7 @@ void CrazyfliePositionController::pidReset()
 
 void CrazyfliePositionController::pid_tuner(const ros::TimerEvent&)
 {
-	if(tune_param >= Z_TUNE)
+	if(tune_param >= Z_TUNE && tune_param < CALIBRATE)
 	{
 		if(calibrated)
 		{
@@ -263,11 +250,14 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 		{
 			ROS_INFO("Not Initalized");
 		}
+		
+		state = WAITING;
+		tune_param = WAITING;
 	}
 	else if(cmd_state->data >= Z_TUNE)
 	  {
 		tune_param =cmd_state->data;
-		ROS_INFO("tune_param = %d",tune_param);
+		//ROS_INFO("tune_param = %d",tune_param);
 		state = POS_CTRL;
 	   }
 	else if(cmd_state->data < Z_TUNE)
@@ -277,7 +267,7 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 	  }
 
 	prev_state = state;
-	ROS_INFO("state = %d",state);
+	//ROS_INFO("state = %d",state);
 
 }
 
