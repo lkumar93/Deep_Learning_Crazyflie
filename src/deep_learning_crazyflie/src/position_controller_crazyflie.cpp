@@ -21,23 +21,27 @@
 #define KEYCODE_L 0x6C
 #define KEYCODE_P 0x70
 
-#define KP_X 10.0
-#define KI_X 2.0
-#define KD_X 2.0
+#define KP_X 0.0
+#define KI_X 0.0
+#define KD_X 0.0
 
-#define KP_Y 10.0
-#define KI_Y 2.0
-#define KD_Y 2.0
+#define KP_Y 0.0
+#define KI_Y 0.0
+#define KD_Y 0.0
 
-#define KP_Z 1800000.0
-#define KI_Z 1800.0
-#define KD_Z 18000.0
+//#define KP_Z 1800000.0
+//#define KI_Z 1800.0
+//#define KD_Z 18000.0
+
+#define KP_Z 2000000
+#define KI_Z 0.0
+#define KD_Z 50000.0
 
 #define INTEGRATOR_MAX_Z 1000.0
 #define INTEGRATOR_MIN_Z -1000.0
 
-#define MAX_OUTPUT_Z 60000.0
-#define MIN_OUTPUT_Z 10000.0
+#define MAX_OUTPUT_Z 55000.0
+#define MIN_OUTPUT_Z 20000.0
 
 #define INTEGRATOR_MAX_X 0.1
 #define INTEGRATOR_MIN_X -0.1
@@ -60,6 +64,7 @@
 #define Z_TUNE 5
 #define Y_TUNE 6
 #define X_TUNE 7
+#define CALIBRATE 8
 
 #include <thread> 
 
@@ -114,7 +119,7 @@ class CrazyfliePositionController
 
    double goal_x, goal_y, goal_z;
 
-   bool initialized;
+   bool initialized, calibrated;
 
    int state, prev_state, tune_param;
 
@@ -138,6 +143,8 @@ CrazyfliePositionController::CrazyfliePositionController():
   initial_position_y(0.0),
   initial_position_z(0.0),
   thrust(0.0),
+  calibrated(false),
+  initialized(false),
   state(WAITING),
   prev_state(WAITING),
   tune_param(WAITING),
@@ -147,7 +154,6 @@ CrazyfliePositionController::CrazyfliePositionController():
 {
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
   point_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/position", 1);
-  initialized = false;
   ground_truth_sub_ = nh_.subscribe("/crazyflie/ground_truth/pose_3d" , 10, &CrazyfliePositionController::getGroundTruth, this);
   cmd_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_pos" , 10, &CrazyfliePositionController::cmdSubscriber, this);
   state_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_state" , 10, &CrazyfliePositionController::stateSubscriber, this);
@@ -167,29 +173,40 @@ void CrazyfliePositionController::pidReset()
 
 void CrazyfliePositionController::pid_tuner(const ros::TimerEvent&)
 {
-	if(tune_param == Z_TUNE)
+	if(tune_param >= Z_TUNE)
 	{
-		ROS_INFO("Setting Z Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
-		pidZ.setKp(kp);
-		pidZ.setKi(ki);
-		pidZ.setKd(kd);
+		if(calibrated)
+		{
+			if(tune_param == Z_TUNE)
+			{
+				ROS_INFO("Setting Z Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
+				pidZ.setKp(kp);
+				pidZ.setKi(ki);
+				pidZ.setKd(kd);
 
-	}
+			}
 
-	else if(tune_param == X_TUNE)
-	{
-		ROS_INFO("Setting X Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
-		pidX.setKp(kp);
-		pidX.setKi(ki);
-		pidX.setKd(kd);
-	}
+			else if(tune_param == X_TUNE)
+			{
+				ROS_INFO("Setting X Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
+				pidX.setKp(kp);
+				pidX.setKi(ki);
+				pidX.setKd(kd);
+			}
 
-	else if(tune_param == Y_TUNE)
-	{
-		ROS_INFO("Setting Y Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
-		pidY.setKp(kp);
-		pidY.setKi(ki);
-		pidY.setKd(kd);
+			else if(tune_param == Y_TUNE)
+			{
+				ROS_INFO("Setting Y Kp = %f, Ki = %f, Kd = %f", kp,ki,kd);
+				pidY.setKp(kp);
+				pidY.setKi(ki);
+				pidY.setKd(kd);
+			}
+		}
+
+		else
+		{
+			ROS_INFO("Not Calibrated");
+		}
 	}
 
 }
@@ -199,7 +216,7 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 
 	current_position_x = OptiTrackPacket->pose.position.x;
 	current_position_y = OptiTrackPacket->pose.position.y;
-	current_position_z = OptiTrackPacket->pose.position.z;
+	current_position_z = -OptiTrackPacket->pose.position.z;
 
 	geometry_msgs::PointStamped position_msg;
 	position_msg.header.frame_id = OptiTrackPacket->header.frame_id;
@@ -211,12 +228,7 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	point_pub_.publish(position_msg);
 
 	if(!initialized)
-	{
-		initial_position_x = current_position_x;
-		initial_position_y = current_position_y;
-		initial_position_z = current_position_z;
 		initialized = true;
-	}
 
         //ROS_INFO("Z- %f, Y - %f ,X- %f, yawrate - %f",current_position_z,current_position_y, current_position_x, yawrate);
 }
@@ -236,24 +248,33 @@ void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstP
 void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state)
 {
 
-	if(cmd_state->data >= Z_TUNE)
+
+	if(cmd_state->data == CALIBRATE)
+	{
+		if(initialized)
+		{
+			initial_position_x = current_position_x;
+			initial_position_y = current_position_y;
+			initial_position_z = current_position_z;
+			calibrated = true;
+		}
+
+		else
+		{
+			ROS_INFO("Not Initalized");
+		}
+	}
+	else if(cmd_state->data >= Z_TUNE)
 	  {
 		tune_param =cmd_state->data;
 		ROS_INFO("tune_param = %d",tune_param);
 		state = POS_CTRL;
 	   }
-	else
-	   {
+	else if(cmd_state->data < Z_TUNE)
+	  {
 		state = cmd_state->data;
 		tune_param = WAITING;
-	    }
-
-	if(state == TAKE_OFF && prev_state != state)
-	{
-		initial_position_x = current_position_x;
-		initial_position_y = current_position_y;
-		initial_position_z = current_position_z;
-	}
+	  }
 
 	prev_state = state;
 	ROS_INFO("state = %d",state);
@@ -262,27 +283,35 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 
 void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 {
-   if(initialized && state==TAKE_OFF)
+   if(state==TAKE_OFF)
    {
-	float dt = e.current_real.toSec() - e.last_real.toSec();
+ 	if(calibrated)
+	{
+		float dt = e.current_real.toSec() - e.last_real.toSec();
 
- 	if (current_position_z > initial_position_z + 0.1  || thrust > 50000)
-         {
-            pidReset();
-            pidZ.setIntegral(thrust / pidZ.ki());
-            state = POS_CTRL;
-            thrust = 0;
-        }
-        else
-        {
-	    ROS_DEBUG("TAKING OFF");
-            thrust += 10000 * dt;
-            cmd.linear.x = 0.0;
-            cmd.linear.y = 0.0;
-            cmd.angular.y = 0.0;
-            cmd.linear.z = thrust;
-            vel_pub_.publish(cmd);
-        }
+	 	if (current_position_z > initial_position_z + 0.1  || thrust > 50000)
+		 {
+		    pidReset();
+		    pidZ.setIntegral(thrust / pidZ.ki());
+		    state = POS_CTRL;
+		    thrust = 0;
+		}
+		else
+		{
+		    ROS_DEBUG("TAKING OFF");
+		    thrust += 10000 * dt;
+		    cmd.linear.x = 0.0;
+		    cmd.linear.y = 0.0;
+		    cmd.angular.y = 0.0;
+		    cmd.linear.z = thrust;
+		    vel_pub_.publish(cmd);
+		}
+	}
+
+	else
+	{
+		ROS_INFO("Not Calibrated");
+	}
 
    }
 
@@ -290,8 +319,11 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 
 void CrazyfliePositionController::land(const ros::TimerEvent& e)
 {
-   if(initialized && state==LAND)
+   if( state==LAND)
    {
+
+ 	if(calibrated)
+	{
 	    ROS_DEBUG("LANDING");
 	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
             cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
@@ -303,6 +335,13 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 	    {
 		state = EMERGENCY;
 	    }
+	}
+
+	else
+	{
+		ROS_INFO("Not Calibrated");
+	}
+
    }
 
 }
@@ -316,16 +355,26 @@ void CrazyfliePositionController::run()
 
 void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 {
-   if(initialized && state==POS_CTRL)
+   if(state==POS_CTRL)
    {
+ 	if(calibrated)
+	{
 	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
             cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
             cmd.angular.y = yawrate;
             cmd.linear.z = pidZ.update(current_position_z, initial_position_z + goal_z);
-	    ROS_INFO("POSITION CONTROL : x= %f, y= %f, z= %f ",cmd.linear.x,cmd.linear.y,cmd.linear.z);
+	    ROS_INFO("POSITION CONTROL CMD : Pitch= %f, Roll= %f, Thrust= %f ",cmd.linear.x,cmd.linear.y,cmd.linear.z);
+	    ROS_INFO("GOAL POSITION : x= %f, y= %f, z= %f ",initial_position_x + goal_x,initial_position_y + goal_y,initial_position_z + goal_z);
+	    ROS_INFO("CURRENT POSITION : x= %f, y= %f, z= %f ",current_position_x,current_position_y ,current_position_z);
             vel_pub_.publish(cmd);
-   }
+	}
 
+	else
+	{
+		ROS_INFO("Not Calibrated");
+	}
+
+   }
 }
 
 void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
@@ -342,6 +391,7 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
             vel_pub_.publish(cmd);
 	    pidReset();
 	    state = WAITING;
+	    calibrated = false;
    }
 
 }

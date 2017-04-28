@@ -19,6 +19,7 @@
 #define KEYCODE_P 0x70
 #define KEYCODE_O 0x6F
 #define KEYCODE_I 0x69
+#define KEYCODE_C 0x63
 
 #define POSITION_MODE 0
 #define ORIENTATION_MODE 1
@@ -32,13 +33,14 @@
 #define Z_TUNE 5
 #define Y_TUNE 6
 #define X_TUNE 7
+#define CALIBRATE 8
 
-#define KP_Z_INIT 6500.0
+#define KP_Z_INIT 250000.0
 #define KI_Z_INIT 0.0
-#define KD_Z_INIT 0.0
+#define KD_Z_INIT 200000.0
 
 #define KP_Z_OFFSET 1000.0
-#define KI_Z_OFFSET 1000.0
+#define KI_Z_OFFSET 100.0
 #define KD_Z_OFFSET 1000.0
 
 #define KP_XY_INIT 0.0
@@ -140,6 +142,7 @@ void TeleopCrazyflie::keyLoop()
   puts("P - Position Mode");
   puts("O - Orientation Mode");
   puts("I - PID Tuning Mode");
+  puts("C - Calibrate");
 
 
 
@@ -186,6 +189,13 @@ void TeleopCrazyflie::keyLoop()
 		ROS_INFO("To Take Off, Enable Position Mode");
 	dirty = true;
         break;
+
+      case KEYCODE_C:
+        ROS_INFO("CALIBRATE");
+	state = CALIBRATE;	
+	dirty = true;
+        break;
+
 
       case KEYCODE_L:
         ROS_INFO("LAND");
