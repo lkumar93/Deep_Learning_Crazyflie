@@ -47,9 +47,9 @@
 #define KI_XY_INIT 0.0
 #define KD_XY_INIT 0.0
 
-#define KP_XY_OFFSET 1.0
-#define KI_XY_OFFSET 1.0
-#define KD_XY_OFFSET 1.0
+#define KP_XY_OFFSET 0.05
+#define KI_XY_OFFSET 0.05
+#define KD_XY_OFFSET 0.05
 
 
 using namespace geometry_msgs;
@@ -143,8 +143,6 @@ void TeleopCrazyflie::keyLoop()
   puts("O - Orientation Mode");
   puts("I - PID Tuning Mode");
   puts("C - Calibrate");
-
-
 
   for(;;)
   {
@@ -437,25 +435,31 @@ void TeleopCrazyflie::keyLoop()
     
     }
 
-      if(mode == ORIENTATION_MODE)
+
+      state_msg.data = state;
+      state_pub_.publish(state_msg);
+
+      if(state!= CALIBRATE)
       {
-      	vel_pub_.publish(twist); 
-      }
+	      if(mode == ORIENTATION_MODE)
+	      {
+	      	vel_pub_.publish(twist); 
+	      }
 
-      else
-     {
-        cmd_pub_.publish(twist); 
+	      else
+	     {
+		cmd_pub_.publish(twist); 
+	     }
+
+	   if(mode == POSITION_MODE)
+		ROS_INFO("X - %f, Y - %f ,Z - %f,yawrate - %f", goal_x ,goal_y, goal_z,yawrate);
+
+	   else if(mode == ORIENTATION_MODE)
+	   	ROS_INFO("Thrust - %f, roll - %f ,pitch - %f,yawrate - %f",thrust,roll,pitch,yawrate);
+
+	   else
+		ROS_INFO("Tune Param = %d, Kp - %f, Ki - %f , Kd - %f",tune_param,kp,ki,kd);
      }
-
-	state_msg.data = state;
-        state_pub_.publish(state_msg);
-
-   if(mode == POSITION_MODE)
-	ROS_INFO("X - %f, Y - %f ,Z - %f,yawrate - %f", goal_x ,goal_y, goal_z,yawrate);
-   else if(mode == ORIENTATION_MODE)
-   	ROS_INFO("Thrust - %f, roll - %f ,pitch - %f,yawrate - %f",thrust,roll,pitch,yawrate);
-   else
-	ROS_INFO("Tune Param = %d, Kp - %f, Ki - %f , Kd - %f",tune_param,kp,ki,kd);
 
   }
   return;
