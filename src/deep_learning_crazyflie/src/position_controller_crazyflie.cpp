@@ -227,9 +227,18 @@ void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstP
 	goal_y = cmd_pos->linear.y;
 	goal_z = cmd_pos->linear.z;
 
-	kp = cmd_pos->angular.x;
-	ki = cmd_pos->angular.y;
-	kd = cmd_pos->angular.z;
+	if(tune_param >= Z_TUNE && tune_param < CALIBRATE)
+	{
+		kp = cmd_pos->angular.x;
+		ki = cmd_pos->angular.y;
+		kd = cmd_pos->angular.z;
+	}
+
+	else
+	{
+		yawrate =  cmd_pos->angular.y;
+	}
+
       
 }
 
@@ -276,6 +285,8 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 {
    if(state==TAKE_OFF)
    {
+	tune_param = WAITING;
+
  	if(calibrated)
 	{
 		float dt = e.current_real.toSec() - e.last_real.toSec();
@@ -312,20 +323,43 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 {
    if( state==LAND)
    {
+	tune_param = WAITING;
 
  	if(calibrated)
 	{
-	    ROS_DEBUG("LANDING");
-	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
-            cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
-            cmd.angular.y = yawrate;
-            cmd.linear.z = pidZ.update(current_position_z, initial_position_z + 0.05);
-            vel_pub_.publish(cmd);
+	    float dt = e.current_real.toSec() - e.last_real.toSec();
 
+	    ROS_DEBUG("LANDING");
 	    if(current_position_z <= initial_position_z + 0.05)
 	    {
-		state = EMERGENCY;
+
+		if(thrust > MIN_OUTPUT_Z)
+		{
+		    thrust -= 10000 * dt;
+		    cmd.linear.x = 0.0;
+		    cmd.linear.y = 0.0;
+		    cmd.angular.y = 0.0;
+		    cmd.linear.z = thrust;
+		    vel_pub_.publish(cmd);
+
+		}
+
+		else
+		{
+			state = WAITING;
+		}
+
 	    }
+
+	   else
+	   {
+		    cmd.linear.x = pidX.update(current_position_x, current_position_x);
+		    cmd.linear.y = pidY.update(current_position_y, current_position_y);
+		    cmd.angular.y = 0.0;
+		    cmd.linear.z = pidZ.update(current_position_z, initial_position_z + 0.05);
+		    vel_pub_.publish(cmd);
+           }
+
 	}
 
 	else
