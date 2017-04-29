@@ -2,27 +2,28 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Point.h>
 #include <std_msgs/Int32.h>
 #include <signal.h>
 #include <termios.h>
 #include <stdio.h>
 #include "pid.hpp"
 
-#define KP_X 0.0
-#define KI_X 0.0
-#define KD_X 0.0
+#define KP_X 40.0
+#define KI_X 2.0
+#define KD_X 20.0
 
-#define KP_Y 0.0
-#define KI_Y 0.0
-#define KD_Y 0.0
+#define KP_Y 40.0
+#define KI_Y 2.0
+#define KD_Y 20.0
 
 //#define KP_Z 1800000.0
 //#define KI_Z 1800.0
 //#define KD_Z 18000.0
 
-#define KP_Z 2000000
-#define KI_Z 0.0
-#define KD_Z 50000.0
+#define KP_Z 5000.0
+#define KI_Z 3500.0
+#define KD_Z 6000.0
 
 #define INTEGRATOR_MAX_Z 1000.0
 #define INTEGRATOR_MIN_Z -1000.0
@@ -61,8 +62,6 @@ using namespace std;
 int kfd = 0;
 struct termios cooked, raw;
 
-
-
 class CrazyfliePositionController
  {
 
@@ -86,7 +85,7 @@ class CrazyfliePositionController
    ros::NodeHandle nh_;
    double yawrate, thrust;
    
-   ros::Publisher vel_pub_, point_pub_;
+   ros::Publisher vel_pub_, point_stamped_pub_, point_pub_;
    ros::Subscriber ground_truth_sub_,cmd_sub_,state_sub_;
 
    geometry_msgs::Twist cmd;
@@ -122,7 +121,7 @@ CrazyfliePositionController::CrazyfliePositionController():
   goal_x(0.0),
   goal_y(0.0),
   yawrate(0.0),
-  goal_z(0.15),
+  goal_z(0.2),
   current_position_x(0.0),
   current_position_y(0.0),
   current_position_z(0.0),
@@ -140,11 +139,12 @@ CrazyfliePositionController::CrazyfliePositionController():
   pidZ(KP_Z, KD_Z, KD_Z, MIN_OUTPUT_Z, MAX_OUTPUT_Z, INTEGRATOR_MIN_Z, INTEGRATOR_MAX_Z, "z")
 {
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
-  point_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/position", 1);
+  point_pub_ =  nh_.advertise<geometry_msgs::Point>("crazyflie/ground_truth/position", 1);
+  point_stamped_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/ground_truth/position_stamped", 1);
   ground_truth_sub_ = nh_.subscribe("/crazyflie/ground_truth/pose_3d" , 10, &CrazyfliePositionController::getGroundTruth, this);
   cmd_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_pos" , 10, &CrazyfliePositionController::cmdSubscriber, this);
   state_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_state" , 10, &CrazyfliePositionController::stateSubscriber, this);
-  takeoff_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::takeoff, this);
+  takeoff_timer = nh_.createTimer(ros::Duration(0.04), &CrazyfliePositionController::takeoff, this);
   land_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::land, this);
   pos_ctrl_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::pos_ctrl, this);
   emergency_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::emergency, this);
@@ -201,8 +201,8 @@ void CrazyfliePositionController::pid_tuner(const ros::TimerEvent&)
 void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket)
 {
 
-	current_position_x = OptiTrackPacket->pose.position.x;
-	current_position_y = OptiTrackPacket->pose.position.y;
+	current_position_x = OptiTrackPacket->pose.position.y;
+	current_position_y = -OptiTrackPacket->pose.position.x;
 	current_position_z = -OptiTrackPacket->pose.position.z;
 
 	geometry_msgs::PointStamped position_msg;
@@ -210,9 +210,10 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	position_msg.header.stamp = OptiTrackPacket->header.stamp;
 	position_msg.point.x = current_position_x;
 	position_msg.point.y = current_position_y;	
-	position_msg.point.z = current_position_z	;	
+	position_msg.point.z = current_position_z;	
 
-	point_pub_.publish(position_msg);
+	point_stamped_pub_.publish(position_msg);
+	point_pub_.publish(position_msg.point);
 
 	if(!initialized)
 		initialized = true;
@@ -279,7 +280,7 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 	{
 		float dt = e.current_real.toSec() - e.last_real.toSec();
 
-	 	if (current_position_z > initial_position_z + 0.1  || thrust > 50000)
+	 	if (current_position_z > initial_position_z + 0.05  || thrust > 50000)
 		 {
 		    pidReset();
 		    pidZ.setIntegral(thrust / pidZ.ki());

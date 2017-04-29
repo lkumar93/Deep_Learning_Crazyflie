@@ -35,21 +35,25 @@
 #define X_TUNE 7
 #define CALIBRATE 8
 
-#define KP_Z_INIT 250000.0
-#define KI_Z_INIT 0.0
-#define KD_Z_INIT 200000.0
+#define KP_Z_INIT 5000.0
+#define KI_Z_INIT 3500.0
+#define KD_Z_INIT 6000.0
 
-#define KP_Z_OFFSET 1000.0
+#define KP_Z_OFFSET 100.0
 #define KI_Z_OFFSET 100.0
-#define KD_Z_OFFSET 1000.0
+#define KD_Z_OFFSET 100.0
 
-#define KP_XY_INIT 0.0
-#define KI_XY_INIT 0.0
-#define KD_XY_INIT 0.0
+#define KP_X_INIT 40.0
+#define KI_X_INIT 2.0
+#define KD_X_INIT 20.0
 
-#define KP_XY_OFFSET 0.05
-#define KI_XY_OFFSET 0.05
-#define KD_XY_OFFSET 0.05
+#define KP_Y_INIT 40.0
+#define KI_Y_INIT 2.0
+#define KD_Y_INIT 20.0
+
+#define KP_XY_OFFSET 0.25
+#define KI_XY_OFFSET 0.25
+#define KD_XY_OFFSET 0.25
 
 
 using namespace geometry_msgs;
@@ -69,6 +73,11 @@ class TeleopCrazyflie
    double roll, pitch, yawrate, thrust, goal_x, goal_y, goal_z, kp, ki, kd;
    int mode, state, tune_param, prev_tune_param;
    ros::Publisher vel_pub_, cmd_pub_, state_pub_;
+
+   double kp_z_prev, ki_z_prev, kd_z_prev;
+   double kp_y_prev, ki_y_prev, kd_y_prev;
+   double kp_x_prev, ki_x_prev, kd_x_prev;
+
    
  };
 
@@ -81,10 +90,19 @@ TeleopCrazyflie::TeleopCrazyflie():
   state(WAITING),
   goal_x(0.0),
   goal_y(0.0),
-  goal_z(0.15),
+  goal_z(0.2),
   kp(KP_Z_INIT),
   kd(KD_Z_INIT),
   ki(KI_Z_INIT),
+  kp_z_prev(KP_Z_INIT),
+  ki_z_prev(KI_Z_INIT),
+  kd_z_prev(KD_Z_INIT),
+  kp_x_prev(KP_X_INIT),
+  ki_x_prev(KI_X_INIT),
+  kd_x_prev(KD_X_INIT),
+  kp_y_prev(KP_Y_INIT),
+  ki_y_prev(KI_Y_INIT),
+  kd_y_prev(KD_Y_INIT),
   tune_param(Z_TUNE),
   prev_tune_param(Z_TUNE)
 {
@@ -170,8 +188,8 @@ void TeleopCrazyflie::keyLoop()
    if( tune_param == X_TUNE || tune_param == Y_TUNE)
    {
 	   kp_offset = KP_XY_OFFSET;
-	   kd_offset = KD_XY_OFFSET;
 	   ki_offset = KI_XY_OFFSET;
+	   kd_offset = KD_XY_OFFSET;
    }
 
    //ros::Duration(0.05).sleep();
@@ -181,10 +199,10 @@ void TeleopCrazyflie::keyLoop()
     {
       case KEYCODE_T:
         ROS_INFO("TAKING OFF");
-	if(mode == POSITION_MODE)
+	if(mode == POSITION_MODE || mode == PID_TUNING_MODE)
 		state = TAKE_OFF;
-	else
-		ROS_INFO("To Take Off, Enable Position Mode");
+	//else
+	//	ROS_INFO("To Take Off, Enable Position Mode");
 	dirty = true;
         break;
 
@@ -197,10 +215,10 @@ void TeleopCrazyflie::keyLoop()
 
       case KEYCODE_L:
         ROS_INFO("LAND");
-	if(mode == POSITION_MODE)
+	if(mode == POSITION_MODE || mode == PID_TUNING_MODE)
 		state = LAND;
-	else
-		ROS_INFO("To Land, Enable Position Mode");
+	//else
+	//	ROS_INFO("To Land, Enable Position Mode");
 	dirty = true;
         break;
 
@@ -304,25 +322,6 @@ void TeleopCrazyflie::keyLoop()
 
 		state = tune_param;
 
-		if(tune_param != prev_tune_param )
-		{
-			if(tune_param == Z_TUNE)
-			{
-				kp = KP_Z_INIT;
-				kd = KD_Z_INIT;
-				ki = KI_Z_INIT;
-			}
-
-			if(tune_param == X_TUNE || tune_param == Y_TUNE)
-			{
-				kp = KP_XY_INIT;
-				kd = KD_XY_INIT;
-				ki = KI_XY_INIT;
-			}
-
-		}
-		
-		prev_tune_param = tune_param;
 	}
         break;
 
@@ -338,26 +337,7 @@ void TeleopCrazyflie::keyLoop()
 			tune_param = tune_param + 1;
 
 		state = tune_param;
-
-		if(tune_param != prev_tune_param )
-		{
-			if(tune_param == Z_TUNE)
-			{
-				kp = KP_Z_INIT;
-				kd = KD_Z_INIT;
-				ki = KI_Z_INIT;
-			}
-
-			if(tune_param == X_TUNE || tune_param == Y_TUNE)
-			{
-				kp = KP_XY_INIT;
-				kd = KD_XY_INIT;
-				ki = KI_XY_INIT;
-			}
-
-		}
-		
-		prev_tune_param = tune_param;
+	
 	}
 	dirty = true;
         break;
@@ -410,13 +390,66 @@ void TeleopCrazyflie::keyLoop()
 
 	    if(mode == PID_TUNING_MODE)
 		{
-		    twist.angular.x = kp;
-		    twist.angular.y = ki;
-		    twist.angular.z = kd;
+		
+			if(prev_tune_param == tune_param)
+			{
+				if(tune_param == Z_TUNE)
+				{
+					kp_z_prev = kp;
+					kd_z_prev = kd;
+					ki_z_prev = ki;
+				}
+
+				else if(tune_param == X_TUNE)
+				{
+					kp_x_prev = kp;
+					kd_x_prev = kd;
+					ki_x_prev = ki;
+				}
+
+				else if(tune_param == Y_TUNE)
+				{
+					kp_y_prev = kp;
+					kd_y_prev = kd;
+					ki_y_prev = ki;
+				}
+			}
+
+			else
+			{
+				if(tune_param == Z_TUNE)
+				{
+					kp = kp_z_prev;
+					kd = kd_z_prev;
+					ki = ki_z_prev;
+				}
+
+				else if(tune_param == X_TUNE)
+				{
+					kp = kp_x_prev;
+					kd = kd_x_prev;
+					ki = ki_x_prev;
+				}
+
+				else if(tune_param == Y_TUNE)
+				{
+					kp = kp_y_prev;
+					kd = kd_y_prev;
+					ki = ki_y_prev;
+				}
+			}
+
+		        twist.angular.x = kp;
+		        twist.angular.y = ki;
+		        twist.angular.z = kd;
+
+    			prev_tune_param = tune_param;
 		}
 
 
     }
+
+
 
     if(dirty ==true)
     {
