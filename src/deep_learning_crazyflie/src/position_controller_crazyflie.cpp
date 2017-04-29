@@ -154,7 +154,7 @@ CrazyfliePositionController::CrazyfliePositionController():
 void CrazyfliePositionController::pidReset()
 {
     pidX.reset();
-    pidZ.reset();
+    pidY.reset();
     pidZ.reset();
 }
 
