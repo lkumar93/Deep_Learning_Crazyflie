@@ -65,7 +65,7 @@ Visualization Manager:
       History Length: 100
       Name: PointStamped
       Radius: 0.2
-      Topic: /crazyflie/position
+      Topic: /crazyflie/ground_truth/position_stamped
       Value: true
   Enabled: true
   Global Options:
@@ -91,7 +91,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 14.4682
+      Distance: 18.1489
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
@@ -124,5 +124,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1200
-  X: 305
-  Y: 275
+  X: 295
+  Y: 166
