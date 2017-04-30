@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <termios.h>
 #include <stdio.h>
+#include "deep_learning_crazyflie/TunePID.h"
 
 #define KEYCODE_RA 0x43
 #define KEYCODE_LA 0x44
@@ -30,10 +31,11 @@
 #define POS_CTRL 2
 #define LAND 3
 #define EMERGENCY 4
-#define Z_TUNE 5
-#define Y_TUNE 6
-#define X_TUNE 7
-#define CALIBRATE 8
+#define CALIBRATE 5
+
+#define X_TUNE 0
+#define Y_TUNE 1
+#define Z_TUNE 2
 
 #define KP_Z_INIT 5000.0
 #define KI_Z_INIT 3500.0
@@ -73,11 +75,10 @@ class TeleopCrazyflie
    double roll, pitch, yawrate, thrust, goal_x, goal_y, goal_z, kp, ki, kd;
    int mode, state, tune_param, prev_tune_param;
    ros::Publisher vel_pub_, cmd_pub_, state_pub_;
-
+   ros::ServiceClient pid_tuning_client;
    double kp_z_prev, ki_z_prev, kd_z_prev;
    double kp_y_prev, ki_y_prev, kd_y_prev;
    double kp_x_prev, ki_x_prev, kd_x_prev;
-
    
  };
 
@@ -109,6 +110,7 @@ TeleopCrazyflie::TeleopCrazyflie():
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
   state_pub_ =  nh_.advertise<std_msgs::Int32>("crazyflie/deep_learning/cmd_state", 1);
   cmd_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_pos", 1);
+  pid_tuning_client = nh_.serviceClient<deep_learning_crazyflie::TunePID>("tune_pid");
 
 }
 
@@ -194,15 +196,22 @@ void TeleopCrazyflie::keyLoop()
 
    //ros::Duration(0.05).sleep();
 
+    std_msgs::Int32 state_msg;
+
 
     switch(c)
     {
       case KEYCODE_T:
-        ROS_INFO("TAKING OFF");
+        ROS_INFO("TAKE OFF");
+
 	if(mode == POSITION_MODE || mode == PID_TUNING_MODE)
+	{
 		state = TAKE_OFF;
-	//else
-	//	ROS_INFO("To Take Off, Enable Position Mode");
+		state_msg.data = state;
+      		state_pub_.publish(state_msg);
+	}
+	else
+		ROS_INFO("Take Off available only in Position Mode");
 	dirty = true;
         break;
 
@@ -210,50 +219,66 @@ void TeleopCrazyflie::keyLoop()
         ROS_INFO("CALIBRATE");
 	state = CALIBRATE;	
 	dirty = true;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
         break;
 
 
       case KEYCODE_L:
         ROS_INFO("LAND");
+
 	if(mode == POSITION_MODE || mode == PID_TUNING_MODE)
+	{
 		state = LAND;
-	//else
-	//	ROS_INFO("To Land, Enable Position Mode");
+		state_msg.data = state;
+      		state_pub_.publish(state_msg);
+	}
+
+	else
+		ROS_INFO("Landing available only in Position Mode");
 	dirty = true;
         break;
 
       case KEYCODE_P:
-        ROS_INFO("POSITION MODE");
+        ROS_INFO("ACTIVATE POSITION MODE");
         mode = POSITION_MODE;
 	state = WAITING;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
 	dirty = true;
         break;
 
       case KEYCODE_O:
-        ROS_INFO("ORIENTATION MODE");
-	state = WAITING;
+        ROS_INFO("ACTIVATE ORIENTATION MODE");
         mode = ORIENTATION_MODE;
+	state = WAITING;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
 	dirty = true;
         break;
 
       case KEYCODE_I:
-        ROS_INFO("PID TUNING MODE");
+        ROS_INFO("ACTIVATE PID TUNING MODE");
         mode = PID_TUNING_MODE;
-	state = tune_param;
+	state = WAITING;
 	goal_x = 0.0;
 	goal_y = 0.0;
 	goal_z = 0.2;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
 	dirty = true;
         break;
 
       case KEYCODE_Q:
-        ROS_INFO("STOP");
+        ROS_INFO("EMERGENCY STOP");
 	state = EMERGENCY;
         thrust = 0;
 	roll = 0;
 	pitch = 0;
         yawrate = 0;
         dirty = true;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
         break;
 
       case KEYCODE_LA:
@@ -261,9 +286,11 @@ void TeleopCrazyflie::keyLoop()
 
 	if(mode == ORIENTATION_MODE)
         	roll -= roll_offset;
+
 	else if(mode == POSITION_MODE)
-	        goal_y -= goal_y_offset;		
-	else 
+	        goal_y -= goal_y_offset;	
+	
+	else if(mode == PID_TUNING_MODE)
 	        kd -= kd_offset;
 
 	dirty = true;
@@ -273,9 +300,11 @@ void TeleopCrazyflie::keyLoop()
         ROS_DEBUG("RIGHT");
 	if(mode == ORIENTATION_MODE)
         	roll += roll_offset;
+
 	else if(mode == POSITION_MODE)
 	        goal_y += goal_y_offset;
-	else 
+
+	else if(mode == PID_TUNING_MODE)
 	        kd += kd_offset;
 
 	dirty = true;
@@ -289,7 +318,7 @@ void TeleopCrazyflie::keyLoop()
 	else if(mode == POSITION_MODE)
 	        goal_x += goal_x_offset;
 
-	else 
+	else if(mode == PID_TUNING_MODE)
 	        kp += kp_offset;
 
 	dirty = true;
@@ -304,7 +333,7 @@ void TeleopCrazyflie::keyLoop()
 	else if(mode == POSITION_MODE)
 	        goal_x -= goal_x_offset;
 
-	else 
+	else if(mode == PID_TUNING_MODE)
 	        kp -= kp_offset;
 
 	dirty = true;
@@ -315,29 +344,25 @@ void TeleopCrazyflie::keyLoop()
         yawrate -= yawrate_offset;
 	if(mode == PID_TUNING_MODE)
 	{
-		if(tune_param == Z_TUNE)
-	        	tune_param = Z_TUNE;
+		if(tune_param <= X_TUNE)
+	        	tune_param = X_TUNE;
 		else
 			tune_param=  tune_param-1;
-
-		state = tune_param;
-
 	}
+	dirty = true;
         break;
 
-	dirty = true;
+
       case KEYCODE_D:
         ROS_DEBUG("RIGHT_D");
         yawrate += yawrate_offset;
 	if(mode == PID_TUNING_MODE)
 	{
-		if(tune_param == X_TUNE)
-	        	tune_param = X_TUNE;
+		if(tune_param >= Z_TUNE)
+	        	tune_param = Z_TUNE;
 		else
 			tune_param = tune_param + 1;
 
-		state = tune_param;
-	
 	}
 	dirty = true;
         break;
@@ -350,7 +375,7 @@ void TeleopCrazyflie::keyLoop()
 	else if(mode == POSITION_MODE)
 	        goal_z += goal_z_offset;
 
-	else 
+	else if(mode == PID_TUNING_MODE)
 	        ki += ki_offset;
 
 	dirty = true;
@@ -362,7 +387,7 @@ void TeleopCrazyflie::keyLoop()
         	thrust -= thrust_offset;
 	else if(mode == POSITION_MODE)
 	        goal_z -= goal_z_offset;
-	else 
+	else if(mode == PID_TUNING_MODE)
 	        ki -= ki_offset;
 
 	dirty = true;
@@ -371,7 +396,7 @@ void TeleopCrazyflie::keyLoop()
     }
    
     geometry_msgs::Twist twist;
-    std_msgs::Int32 state_msg;
+
 
     twist.angular.y = yawrate;
 
@@ -439,13 +464,30 @@ void TeleopCrazyflie::keyLoop()
 				}
 			}
 
-		        twist.angular.x = kp;
-		        twist.angular.y = ki;
-		        twist.angular.z = kd;
+			deep_learning_crazyflie::TunePID srv;
+
+			srv.request.kp = kp;
+			srv.request.ki = ki;
+			srv.request.kd = kd;
+			srv.request.param = tune_param;
+
+			if(!pid_tuning_client.call(srv))
+			{
+				ROS_INFO("Failed to call service tune_pid");
+			}
+
+			if(tune_param == Z_TUNE)
+				ROS_INFO("PID TUNING: Tune Param = Z, Kp - %f, Ki - %f , Kd - %f",kp,ki,kd);
+
+			if(tune_param == Y_TUNE)
+				ROS_INFO("PID TUNING: Tune Param = Y, Kp - %f, Ki - %f , Kd - %f",kp,ki,kd);
+
+			if(tune_param == X_TUNE)
+				ROS_INFO("PID TUNING: Tune Param = X, Kp - %f, Ki - %f , Kd - %f",kp,ki,kd);
 
     			prev_tune_param = tune_param;
-		}
 
+		}
 
     }
 
@@ -453,7 +495,7 @@ void TeleopCrazyflie::keyLoop()
 
     if(dirty ==true)
     {
-      thrust_offset = 0.0;
+	      thrust_offset = 0.0;
       roll_offset = 0.0;   
       yawrate_offset = 0.0;
       pitch_offset = 0.0;
@@ -468,10 +510,6 @@ void TeleopCrazyflie::keyLoop()
     
     }
 
-
-      state_msg.data = state;
-      state_pub_.publish(state_msg);
-
       if(state!= CALIBRATE)
       {
 	      if(mode == ORIENTATION_MODE)
@@ -485,13 +523,10 @@ void TeleopCrazyflie::keyLoop()
 	     }
 
 	   if(mode == POSITION_MODE)
-		ROS_INFO("X - %f, Y - %f ,Z - %f,yawrate - %f", goal_x ,goal_y, goal_z,yawrate);
+		ROS_INFO("POSITION MODE: X - %f, Y - %f ,Z - %f,yawrate - %f", goal_x ,goal_y, goal_z,yawrate);
 
 	   else if(mode == ORIENTATION_MODE)
-	   	ROS_INFO("Thrust - %f, roll - %f ,pitch - %f,yawrate - %f",thrust,roll,pitch,yawrate);
-
-	   else
-		ROS_INFO("Tune Param = %d, Kp - %f, Ki - %f , Kd - %f",tune_param,kp,ki,kd);
+	   	ROS_INFO("ORIENTATION MODE: Thrust - %f, roll - %f ,pitch - %f,yawrate - %f",thrust,roll,pitch,yawrate);
      }
 
   }
