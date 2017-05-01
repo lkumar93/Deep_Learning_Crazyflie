@@ -9,14 +9,15 @@
 #include <stdio.h>
 #include "pid.hpp"
 #include "deep_learning_crazyflie/TunePID.h"
+#include "deep_learning_crazyflie/Status.h"
 
 #define KP_X 40.0
 #define KI_X 2.0
-#define KD_X 20.0
+#define KD_X 30.0
 
 #define KP_Y 40.0
 #define KI_Y 2.0
-#define KD_Y 20.0
+#define KD_Y 30.0
 
 //#define KP_Z 1800000.0
 //#define KI_Z 1800.0
@@ -55,7 +56,7 @@
 #define Y_TUNE 1
 #define Z_TUNE 2
 
-
+#define TAKEOFF_GAIN 20000
 
 #include <thread> 
 
@@ -80,6 +81,8 @@ class CrazyfliePositionController
    void emergency(const ros::TimerEvent&);
    bool pid_tuner(deep_learning_crazyflie::TunePID::Request &request,
 	deep_learning_crazyflie::TunePID::Response &response);
+   bool requestStatus(deep_learning_crazyflie::Status::Request &request,
+	deep_learning_crazyflie::Status::Response &response);
    void pidReset();
    void pidSet();
    void run();
@@ -93,13 +96,12 @@ class CrazyfliePositionController
    ros::Publisher vel_pub_, point_stamped_pub_, point_pub_, error_pub_;
    ros::Subscriber ground_truth_sub_,cmd_sub_,state_sub_;
 
-   ros::ServiceServer pid_tuner_service;
+   ros::ServiceServer pid_tuner_service,status_request_service;
 
    geometry_msgs::Twist cmd;
    ros::Timer takeoff_timer,land_timer, pos_ctrl_timer, emergency_timer,keyloop_timer;
- 
-   // In m
 
+   // In m
    double initial_position_x, initial_position_y, initial_position_z;
    double current_position_x, current_position_y, current_position_z;
 
@@ -114,6 +116,8 @@ class CrazyfliePositionController
 
    int state, prev_state;
 
+   std::string status;
+
    PID pidX, pidY, pidZ;
    
  };
@@ -123,7 +127,7 @@ CrazyfliePositionController::CrazyfliePositionController():
   goal_x(0.0),
   goal_y(0.0),
   yawrate(0.0),
-  goal_z(0.2),
+  goal_z(0.25),
   current_position_x(0.0),
   current_position_y(0.0),
   current_position_z(0.0),
@@ -140,6 +144,7 @@ CrazyfliePositionController::CrazyfliePositionController():
   kp_z(KP_Z),
   ki_z(KI_Z),
   kd_z(KD_Z),
+  status("NOT CALIBRATED"),
   calibrated(false),
   initialized(false),
   inflight(false),
@@ -160,7 +165,8 @@ CrazyfliePositionController::CrazyfliePositionController():
   pos_ctrl_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::pos_ctrl, this);
   land_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::land, this);
   emergency_timer = nh_.createTimer(ros::Duration(0.001), &CrazyfliePositionController::emergency, this);
-  pid_tuner_service = nh_.advertiseService("tune_pid", &CrazyfliePositionController::pid_tuner, this);
+  pid_tuner_service = nh_.advertiseService("crazyflie/tune_pid", &CrazyfliePositionController::pid_tuner, this);
+  status_request_service = nh_.advertiseService("crazyflie/request_status", &CrazyfliePositionController::requestStatus, this);
 }
 
 void CrazyfliePositionController::pidReset()
@@ -192,7 +198,7 @@ void CrazyfliePositionController::pidSet()
     pidZ.setKi(ki_z);
     pidZ.setKd(kd_z);
 
-    pidReset();
+   // pidReset();
 }
 
 bool CrazyfliePositionController::pid_tuner(deep_learning_crazyflie::TunePID::Request &request,
@@ -226,6 +232,14 @@ deep_learning_crazyflie::TunePID::Response &response)
 	pidSet();
 
 	response.success = true;
+
+	return true;
+}
+
+bool CrazyfliePositionController::requestStatus(deep_learning_crazyflie::Status::Request &request,
+	deep_learning_crazyflie::Status::Response &response)
+{
+	response.status = status ;
 
 	return true;
 }
@@ -271,6 +285,8 @@ void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstP
 
 	yawrate =  cmd_pos->angular.y;
 
+	status ="GOAL CHANGED";
+
 }
 
 void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state)
@@ -284,11 +300,14 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 			initial_position_y = current_position_y;
 			initial_position_z = current_position_z;
 			pidSet();
+			pidReset();
 			calibrated = true;
+			status = "CALIBRATED";
 		}
 		else
 		{
 			ROS_INFO("Not Initalized");
+			status = "NOT INITIALIZED";
 		}
 		
 		state = WAITING;
@@ -313,30 +332,34 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 	 	if (current_position_z > initial_position_z + 0.05  || thrust > 50000)
 		 {
 		    ROS_INFO("Crazyflie is now inflight");
+		    pidReset();
 		    pidSet();
 		    
 		    if(pidZ.ki() != 0.0)
 		    	pidZ.setIntegral(thrust / pidZ.ki());
 		    
 		    inflight = true;
+		    status = "INFLIGHT";
 		    state = POS_CTRL;
 		    thrust = 0;
 		}
 		else
 		{
-		    thrust += 25000 * dt;
+		    thrust += TAKEOFF_GAIN * dt;
 		    cmd.linear.x = 0.0;
 		    cmd.linear.y = 0.0;
 		    cmd.angular.y = 0.0;
 		    cmd.linear.z = thrust;
 		    vel_pub_.publish(cmd);
 		    ROS_INFO("TAKING OFF : Increasing Thrust = %f", thrust);
+		    status = "TAKING OFF";
 		}
 	}
 
 	else
 	{
 		ROS_INFO("Not Calibrated");
+		status = "NOT CALIBRATED";
 	}
 
    }
@@ -370,6 +393,8 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 		    cmd.linear.z = thrust;
 		    vel_pub_.publish(cmd);
 		    ROS_INFO("LANDING : Decreasing Thrust = %f", thrust);
+
+		    status = "LANDING";
 		}
 
 		else
@@ -382,6 +407,7 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 			inflight = false;
 			calibrated = false;
 			state = WAITING;
+			status = "LANDED";
 			ROS_INFO("LANDED");
 		}
 
@@ -396,6 +422,8 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 
 		    ROS_INFO("Will land soon: Pitch = %f, Roll = %f, Thrust = %f ", cmd.linear.x, cmd.linear.y, cmd.linear.z);
 		    vel_pub_.publish(cmd);
+
+		    status = "LANDING";
            }
 
 	}
@@ -403,6 +431,7 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 	else
 	{
 		ROS_INFO("Not Calibrated");
+		status = "NOT CALIBRATED";
 	}
 
    }
@@ -439,12 +468,23 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	    ROS_INFO("ERROR POSITION : x= %f, y= %f, z= %f ",error_x,error_y,error_z);
 	    ROS_INFO(" ");
 
+	    if(abs(error_x)<0.04 && abs(error_y) < 0.04 && abs(error_z) < 0.04)
+		status = "GOAL REACHED";
+
+	    if(abs(error_x)>0.6 && abs(error_y) > 0.6 && abs(error_z) > 0.6)
+	    {
+		status = "OUT OF BOUNDS";
+		state = EMERGENCY;
+		ROS_INFO("OUT OF BOUNDS - EMERGENCY STOP");
+	     }
+
             vel_pub_.publish(cmd);
 	}
 
 	else
 	{
 		ROS_INFO("Not Calibrated");
+		status = "NOT CALIBRATED";
 	}
 
    }

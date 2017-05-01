@@ -73,7 +73,7 @@ set(klt_feature_tracker_LIBS "klt_feature_tracker")
 
 add_service_files(
 	DIRECTORY srv
-	FILES TunePID.srv
+	FILES TunePID.srv Status.srv
 )
 
 ## Generate actions in the 'action' folder
