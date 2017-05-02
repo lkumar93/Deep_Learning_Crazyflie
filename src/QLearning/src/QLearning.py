@@ -39,6 +39,7 @@ from keras.layers.core import Dense, Dropout, Activation
 from keras.optimizers import RMSprop,Adam
 from gazebo_msgs.msg import ModelState
 from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import Point
 from geometry_msgs.msg import Twist
 from mav_msgs.msg import RollPitchYawrateThrust
 from nav_msgs.msg import Odometry
@@ -54,7 +55,7 @@ from sensor_msgs.msg import Imu
 class QLearner:
 
     #Initialize the QLearner
-    def __init__(self, param = 'Thrust', controller = 'AI', setpoint = 0.4, action_limits = [-10000, 10000], action_step_size = 1000 , learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5) :
+    def __init__(self, param = 'Thrust', controller = 'AI', mode='learning_from_demonstration', setpoint = 0.4, action_limits = [20000, 60000], action_step_size = 1000 , learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5) :
 
 	self.param = param
 	self.controller = controller
@@ -76,33 +77,19 @@ class QLearner:
 	self.cmd = Twist()
 
 	cmd_topic = 'crazyflie/deep_learning/cmd_vel'
-	sub_topic = '/crazyflie/cameras/bottom/pose' #'/'+ drone+'/ground_truth/position'
+	sub_topic = '/crazyflie/ground_truth/position_error' #'/'+ drone+'/ground_truth/position'
 	self.cmd_publisher = rospy.Publisher(cmd_topic, Twist, queue_size = 1)
 	self.prev_z = 0.0
 	self.current_z = 0.0
-
-	if self.controller == 'PID' :
-		
-		if self.param == 'Thrust':
-			self.kp = 6500.0 #2 when loop rate 25
-			self.kd = 6500.0 #81.5 when loop rate 25
-
-		elif self.param == 'Pitch':
-			self.kp = 2
-			self.kd = 15.5
-
-		elif self.param == 'Roll':
-			self.kp = 1
-			self.kd = 1
+	self.time_stamp = 0.0
 	
-
-
-	rospy.Subscriber(sub_topic, Imu, self.get_state)
-
+	rospy.Subscriber(sub_topic, Point, self.get_state)
 
 	self.file_name = '../policies/crazyflie_' + param + '_' + str(self.min_value) + '_' + str(self.max_value) + '_' + str(self.step_size) + '_' + controller +'_policy_lt.p'
 
 	self.load_policy()
+
+	
 	
 
 
@@ -230,79 +217,53 @@ class QLearner:
 	# If all the actions have been executed before, select action with less count, if count is more than 5 times , then do a random action	
 	if random_action :
 
-		if self.controller == 'PID' :
+		action = random.choice(possible_actions)
 
-			#self.kp = random.uniform(10,100)
-			#self.kd = random.uniform(10,100)
-			PID = (self.kp * self.current_state[0]) + (self.kd* self.current_state[1])
-			PID_limited =  max(min(PID,self.max_value) , self.min_value)
-			index, action = min(enumerate(possible_actions), key=lambda x: abs(x[1]-PID_limited))
+		if len(self.policy[state]) < len(possible_actions) :
+			for move in possible_actions:
 
-			action_in_policy = False
+				action_in_policy = False
 
-			for av in self.policy[state] :
+				for av in self.policy[state] :
 
-				if av['action'] == action :					
-					action_in_policy = True
-					value = av['value']
-					count = av['count']
-					break;
-
-			if action_in_policy == False :
+					if av['action'] == move :
 				
-				value = 0.0
-				count = 1.0
-
-
-		else :
-
-			action = random.choice(possible_actions)
-
-			if len(self.policy[state]) < len(possible_actions) :
-				for move in possible_actions:
-
-					action_in_policy = False
-
-					for av in self.policy[state] :
-
-						if av['action'] == move :
-					
-							action_in_policy = True
-					
-						if av['action'] == action :
-
-							value = av['value']
-							count = av['count']
-
-	
-					if action_in_policy is False :
-					
-						action = move
-						value = 0.0
-						count = 1.0
-						break
-
-			else :
-
-				sorted_av_table = []
-
-				#Sort the actions according to the count
-				sorted_av_table = sorted(self.policy[state], reverse=False, key = lambda av : av['count'])
-
-				print sorted_av_table
-
-				for av in sorted_av_table :
-		
+						action_in_policy = True
+				
 					if av['action'] == action :
 
 						value = av['value']
-						count = av['count'] + 1
+						count = av['count']
 
-					if av['count'] < 10 and av['action'] in possible_actions:
-						action = av['action']
-						value = av['value']
-						count = av['count'] + 1
-						break
+
+				if action_in_policy is False :
+				
+					action = move
+					value = 0.0
+					count = 1.0
+					break
+
+		else :
+
+			sorted_av_table = []
+
+			#Sort the actions according to the count
+			sorted_av_table = sorted(self.policy[state], reverse=False, key = lambda av : av['count'])
+
+			print sorted_av_table
+
+			for av in sorted_av_table :
+	
+				if av['action'] == action :
+
+					value = av['value']
+					count = av['count'] + 1
+
+				if av['count'] < 10 and av['action'] in possible_actions:
+					action = av['action']
+					value = av['value']
+					count = av['count'] + 1
+					break
 
 
 	else :
@@ -335,24 +296,25 @@ class QLearner:
     def get_state(self, msg) :
 
 	if self.param == 'Roll' :
-		value = msg.linear_acceleration.z
+		value = msg.point.y
 	elif self.param == 'Pitch' :
-		value = msg.linear_acceleration.x
-	else :
-		if msg.linear_acceleration.y > 0 :
-			value = 0.235 - msg.linear_acceleration.y
-		else :
-			value = abs(msg.linear_acceleration.y) + 0.235
+		value = msg.point.x
+	elif self.param == 'Thrust' :
+		value = msg.point.z
+	else:
+		print 'Invalid Param'
+		return
 
-	state = round(self.setpoint - value,3 )
-	self.state = (state, round(state - self.current_state[0],3))
+	state = round(value,3)
+	dt = msg.header.stamp.toSec() - timestamp
+	self.state = (state, round(state-self.state[0],3))
+
+	timestamp = msg.header.stamp.toSec()
 
 	if self.param != 'Thrust':
-		
 		error_z = 0.6 - (-msg.linear_acceleration.y)
 		derror_z = error_z - self.prev_z
 		self.current_z = error_z
-		self.cmd.linear.z = 15.0 + 1.0*error_z + 12.0*derror_z
 
 	if self.initialized is False and self.reset_flag is False :
 		self.initial_state = (state, 0.0)
