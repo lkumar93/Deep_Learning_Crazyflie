@@ -93,7 +93,7 @@ class CrazyfliePositionController
    ros::NodeHandle nh_;
    double yawrate, thrust;
    
-   ros::Publisher vel_pub_, point_stamped_pub_, point_pub_, error_pub_;
+   ros::Publisher vel_pub_, point_stamped_pub_, point_pub_, error_pub_, error_stamped_pub_;
    ros::Subscriber ground_truth_sub_,cmd_sub_,state_sub_;
 
    ros::ServiceServer pid_tuner_service,status_request_service;
@@ -157,6 +157,7 @@ CrazyfliePositionController::CrazyfliePositionController():
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
   point_pub_ =  nh_.advertise<geometry_msgs::Point>("crazyflie/ground_truth/position", 1);
   error_pub_ =  nh_.advertise<geometry_msgs::Point>("crazyflie/ground_truth/position_error", 1);
+  error_stamped_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/ground_truth/position_error_stamped", 1);
   point_stamped_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/ground_truth/position_stamped", 1);
   ground_truth_sub_ = nh_.subscribe("/crazyflie/ground_truth/pose_3d" , 1, &CrazyfliePositionController::getGroundTruth, this);
   state_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_state" , 1, &CrazyfliePositionController::stateSubscriber, this);
@@ -252,7 +253,7 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 
 	geometry_msgs::PointStamped position_msg;
 	position_msg.header.frame_id = OptiTrackPacket->header.frame_id;
-	position_msg.header.stamp = OptiTrackPacket->header.stamp;
+	position_msg.header.stamp = ros::Time::now();
 	position_msg.point.x = current_position_x;
 	position_msg.point.y = current_position_y;	
 	position_msg.point.z = current_position_z;	
@@ -264,12 +265,16 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	error_y = initial_position_y + goal_y - current_position_y;
 	error_x = initial_position_x + goal_x - current_position_x;
 
-	geometry_msgs::Point error_msg;
-	error_msg.x = error_x;
-	error_msg.y = error_y;
-	error_msg.z = error_z;
+	geometry_msgs::PointStamped error_msg;
+	error_msg.header.frame_id = OptiTrackPacket->header.frame_id;
+	error_msg.header.stamp = ros::Time::now();
+	error_msg.point.x = error_x;
+	error_msg.point.y = error_y;
+	error_msg.point.z = error_z;
 
-	error_pub_.publish(error_msg);
+	error_stamped_pub_.publish(error_msg);
+	error_pub_.publish(error_msg.point);
+
 	
 	if(!initialized)
 		initialized = true;
