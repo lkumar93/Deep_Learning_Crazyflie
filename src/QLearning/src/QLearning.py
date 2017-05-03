@@ -32,18 +32,9 @@ import cPickle
 import math
 import curses	
 
-
-from keras.models import load_model
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
-from keras.optimizers import RMSprop,Adam
-from gazebo_msgs.msg import ModelState
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import Twist
-from mav_msgs.msg import RollPitchYawrateThrust
-from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu
 
 ###########################################
 ##
@@ -55,10 +46,9 @@ from sensor_msgs.msg import Imu
 class QLearner:
 
     #Initialize the QLearner
-    def __init__(self, param = 'Thrust', controller = 'AI', mode='learning_from_demonstration', setpoint = 0.4, action_limits = [20000, 60000], action_step_size = 1000 , learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5) :
+    def __init__(self, param = 'Z',mode='behavioral cloning', setpoint = 0.4, action_limits = [20000, 55000], action_step_size = 1000, state_variance = [0.5,0.25], learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5) :
 
 	self.param = param
-	self.controller = controller
 	self.learning_rate = learning_rate
 	self.discount_factor = discount_factor
 	self.setpoint = setpoint
@@ -75,9 +65,12 @@ class QLearner:
 	self.reset_flag = False
 	self.epochs = 0 
 	self.cmd = Twist()
+	self.mode = mode
+	self.state_variance = state_variance
+	self.calibrated = False
 
 	cmd_topic = 'crazyflie/deep_learning/cmd_vel'
-	sub_topic = '/crazyflie/ground_truth/position_error' #'/'+ drone+'/ground_truth/position'
+	sub_topic = '/crazyflie/ground_truth/position_error_stamped' #'/'+ drone+'/ground_truth/position'
 	self.cmd_publisher = rospy.Publisher(cmd_topic, Twist, queue_size = 1)
 	self.prev_z = 0.0
 	self.current_z = 0.0
@@ -85,52 +78,57 @@ class QLearner:
 	
 	rospy.Subscriber(sub_topic, Point, self.get_state)
 
-	self.file_name = '../policies/crazyflie_' + param + '_' + str(self.min_value) + '_' + str(self.max_value) + '_' + str(self.step_size) + '_' + controller +'_policy_lt.p'
+	if self.mode is 'behavioral cloning' :
+		rospy.Subscriber(cmd_topic, Twist, self.get_action)
+
+	self.file_name = '../policies/crazyflie_' + param + '_' + str(self.min_value) + '_' + str(self.max_value) + '_' + str(self.step_size) +'_'+self.state_variance[0]+'_'+self.state_variance[1] +'_policy_lt.p'
 
 	self.load_policy()
-
-	
-	
 
 
     #Take an action
     def play(self) :
 
-	current_state = self.state
-	current_action = None
-	current_value = 0.0
-	current_count = 0.0
+	if self.mode is 'reinforcement' :
+
+		current_state = self.state
+		current_action = None
+		current_value = 0.0
+		current_count = 0.0
 	
-	#If current state is in Q Learner's policy 
-	if current_state in self.policy :
+		#If current state is in Q Learner's policy 
+		if current_state in self.policy :
 
-		#Epsilon-Greedy Strategy : Exploitation vs Exploration
-		#Select the best action with (1-epsilon) probability
-		if random.random() > self.epsilon :
-			#Find the best action and value
-			current_action, current_value,current_count = self.get_best_action_value(current_state,self.actions)
+			#Epsilon-Greedy Strategy : Exploitation vs Exploration
+			#Select the best action with (1-epsilon) probability
+			if random.random() > self.epsilon :
+				#Find the best action and value
+				current_action, current_value,current_count = self.get_best_action_value(current_state,self.actions)
 
- 	#As current state is not in the policy, initialize a list for that particular state
-	else :
-		self.policy[current_state] = []
+	 	#As current state is not in the policy, initialize a list for that particular state
+		else :
+			self.policy[current_state] = []
 
-	#If the current state is not in the policy or if selecting a random action with epsilon probability 
-	#Make sure you are selecting an action that has not been executed before , if all the actions have been 
-	#executed before then do a random action
+		#If the current state is not in the policy or if selecting a random action with epsilon probability 
+		#Make sure you are selecting an action that has not been executed before , if all the actions have been 
+		#executed before then do a random action
 
-	if current_action is None :
+		if current_action is None :
 
-		current_action, current_value,current_count = self.get_best_action_value(current_state,self.actions,random_action = True)
+			current_action, current_value,current_count = self.get_best_action_value(current_state,self.actions,random_action = True)
 					
-	print "current_state = " + str(current_state)
+		print "current_state = " + str(current_state)
 
-	#Execute the current action
-	self.execute_action(current_action)
+		#Execute the current action
+		self.execute_action(current_action)
 
-	self.current_state = current_state
-	self.current_action = current_action
-	self.current_value = current_value
-	self.current_count = current_count
+		self.current_state = current_state
+		self.current_action = current_action
+		self.current_value = current_value
+		self.current_count = current_count
+
+	else :
+		print "Cannot execute actions in behavioral cloning mode"
 
 
 
@@ -153,8 +151,6 @@ class QLearner:
 
 	#If the next state is in QLearner's policy, then
 	if next_state in self.policy : 
-
-
 		#Find the next action and the value of next state/action pair
 		next_action, next_value,next_count = self.get_best_action_value(next_state,self.actions)
 
@@ -212,7 +208,6 @@ class QLearner:
 	index = 0
 
 
-	
 	#if selecting a random action with epsilon probability, make sure you are selecting an action that has been never been executed before 			
 	# If all the actions have been executed before, select action with less count, if count is more than 5 times , then do a random action	
 	if random_action :
@@ -286,13 +281,14 @@ class QLearner:
     #Reward Function
     def get_reward(self,state) :
 
-	reward = 10*math.exp(-abs(state[0])/0.2)* math.exp(-abs(state[1])/0.2)
+	#Gaussian Reward Function
+	reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))
 	
 	print reward
 
 	return reward
 
-    #Get state of the game
+    #Get state of the crazyflie
     def get_state(self, msg) :
 
 	if self.param == 'Roll' :
@@ -306,25 +302,40 @@ class QLearner:
 		return
 
 	state = round(value,3)
-	dt = msg.header.stamp.toSec() - timestamp
+	dt = msg.header.stamp.toSec() - self.timestamp
 	self.state = (state, round(state-self.state[0],3))
 
-	timestamp = msg.header.stamp.toSec()
-
-	if self.param != 'Thrust':
-		error_z = 0.6 - (-msg.linear_acceleration.y)
-		derror_z = error_z - self.prev_z
-		self.current_z = error_z
+	self.timestamp = msg.header.stamp.toSec()
 
 	if self.initialized is False and self.reset_flag is False :
 		self.initial_state = (state, 0.0)
 		self.state = self.initial_state
-		self.prev_z = 0.0
 		self.initialized = True
 
+    #Get current action of the drone
+    def get_action(self, msg) :
+
+	if self.mode is 'behavioral cloning':
+		if self.param == 'Y' :
+			value = msg.linear.y
+		elif self.param == 'X' :
+			value = msg.linear.x
+		elif self.param == 'Z' :
+			value = msg.linear.z
+		else:
+			print 'Invalid Param'
+			return
+
+		value = round(value/self.step_size)*self.step_size
+
+		self.current_action = value
+		self.calibrated = True
+
+	else :
+		print "Cannot subscribe to actions in reinforcement learning mode"
+		
 
     def execute_action(self,action) :
-
 
 	if self.param == 'Pitch':
 
@@ -340,7 +351,7 @@ class QLearner:
 
 	else :
 
-		self.cmd.linear.z =  29000 + action
+		self.cmd.linear.z =   action
 
 		print "Thrust = " + str(self.cmd.linear.z) 
 
@@ -379,7 +390,7 @@ class QLearner:
     #Save the policy
     def save_policy(self) :
 
-	#Save the policy as a json file
+	#Save the policy as a pickle file
 	policy_file = open(self.file_name,'wv')
 
 	#Dump the dictionary in QLearner's file as a Pickle Object to policy file
@@ -398,6 +409,8 @@ class QLearner:
 	self.cmd.angular.y = 0.0
 	self.reset_flag = True
 	self.initialized = False
+	self.calibrated = True
+
 	self.cmd_publisher.publish(self.cmd)	
 	time.sleep(0.2)
 	
