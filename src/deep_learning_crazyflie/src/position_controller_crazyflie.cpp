@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/Point.h>
@@ -11,21 +12,21 @@
 #include "deep_learning_crazyflie/TunePID.h"
 #include "deep_learning_crazyflie/Status.h"
 
-#define KP_X 40.0
-#define KI_X 2.0
-#define KD_X 30.0
+#define KP_X 45.0
+#define KI_X 2.5
+#define KD_X 52.0
 
-#define KP_Y 40.0
-#define KI_Y 2.0
-#define KD_Y 30.0
+#define KP_Y 45.0
+#define KI_Y 2.5
+#define KD_Y 52.0
 
 //#define KP_Z 1800000.0
 //#define KI_Z 1800.0
 //#define KD_Z 18000.0
 
-#define KP_Z 5000.0
+#define KP_Z 5500.0
 #define KI_Z 3500.0
-#define KD_Z 6000.0
+#define KD_Z 6500.0
 
 #define INTEGRATOR_MAX_Z 1000.0
 #define INTEGRATOR_MIN_Z -1000.0
@@ -57,6 +58,9 @@
 #define Z_TUNE 2
 
 #define TAKEOFF_GAIN 20000
+
+#define GOAL_REACH_THRESHOLD_INIT 0.01
+#define GOAL_REACH_THRESHOLD_MAX 0.01
 
 #include <thread> 
 
@@ -93,7 +97,7 @@ class CrazyfliePositionController
    ros::NodeHandle nh_;
    double yawrate, thrust;
    
-   ros::Publisher vel_pub_, point_stamped_pub_, point_pub_, error_pub_, error_stamped_pub_;
+   ros::Publisher vel_pub_, point_stamped_pub_, point_pub_, error_pub_, error_stamped_pub_,state_stamped_pub_;
    ros::Subscriber ground_truth_sub_,cmd_sub_,state_sub_;
 
    ros::ServiceServer pid_tuner_service,status_request_service;
@@ -113,6 +117,10 @@ class CrazyfliePositionController
    double error_x, error_y, error_z;
 
    bool initialized, calibrated, inflight;
+
+   bool goal_reached_threshold;
+
+   int count;
 
    int state, prev_state;
 
@@ -150,11 +158,14 @@ CrazyfliePositionController::CrazyfliePositionController():
   inflight(false),
   state(WAITING),
   prev_state(WAITING),
+  goal_reached_threshold(GOAL_REACH_THRESHOLD_INIT),
+  count(0),
   pidX(KP_X, KD_X, KD_X, MIN_OUTPUT_X, MAX_OUTPUT_X, INTEGRATOR_MIN_X, INTEGRATOR_MAX_X, "x"),
   pidY(KP_Y, KD_Y, KD_Y, MIN_OUTPUT_Y, MAX_OUTPUT_Y, INTEGRATOR_MIN_Y, INTEGRATOR_MAX_Y, "y"),
   pidZ(KP_Z, KD_Z, KD_Z, MIN_OUTPUT_Z, MAX_OUTPUT_Z, INTEGRATOR_MIN_Z, INTEGRATOR_MAX_Z, "z")
 {
   vel_pub_ =  nh_.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
+  state_stamped_pub_ =  nh_.advertise<geometry_msgs::TwistStamped>("crazyflie/deep_learning/state_stamped", 1);
   point_pub_ =  nh_.advertise<geometry_msgs::Point>("crazyflie/ground_truth/position", 1);
   error_pub_ =  nh_.advertise<geometry_msgs::Point>("crazyflie/ground_truth/position_error", 1);
   error_stamped_pub_ =  nh_.advertise<geometry_msgs::PointStamped>("crazyflie/ground_truth/position_error_stamped", 1);
@@ -275,6 +286,18 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	error_stamped_pub_.publish(error_msg);
 	error_pub_.publish(error_msg.point);
 
+	geometry_msgs::TwistStamped stamped_state_msg;
+	stamped_state_msg.header.frame_id = OptiTrackPacket->header.frame_id;
+	stamped_state_msg.header.stamp = ros::Time::now();
+	stamped_state_msg.twist.angular.x = error_x;
+	stamped_state_msg.twist.angular.y = error_y;
+	stamped_state_msg.twist.angular.z = error_z;
+
+	stamped_state_msg.twist.linear.x = current_position_x - initial_position_x;
+	stamped_state_msg.twist.linear.y = current_position_y - initial_position_y;
+	stamped_state_msg.twist.linear.z = current_position_z - initial_position_z;
+
+	state_stamped_pub_.publish(stamped_state_msg);
 	
 	if(!initialized)
 		initialized = true;
@@ -306,6 +329,11 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 			initial_position_z = current_position_z;
 			pidSet();
 			pidReset();
+			goal_x = 0.0;
+			goal_y = 0.0;
+			goal_z = 0.25;
+			count = 0;
+			
 			calibrated = true;
 			status = "CALIBRATED";
 		}
@@ -385,10 +413,12 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 	{
 	    float dt = e.current_real.toSec() - e.last_real.toSec();
 
+	    goal_x = 0.0;
+	    goal_y = 0.0;
+	    goal_z = 0.0;
 
 	    if(current_position_z <= initial_position_z + 0.1)
 	    {
-
 		if(thrust > MIN_OUTPUT_Z)
 		{
 		    thrust -= 10000 * dt;
@@ -415,9 +445,7 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 			status = "LANDED";
 			ROS_INFO("LANDED");
 		}
-
 	    }
-
 	   else
 	   {
 		    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
@@ -430,7 +458,6 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 
 		    status = "LANDING";
            }
-
 	}
 
 	else
@@ -473,10 +500,23 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	    ROS_INFO("ERROR POSITION : x= %f, y= %f, z= %f ",error_x,error_y,error_z);
 	    ROS_INFO(" ");
 
-	    if(abs(error_x)<0.04 && abs(error_y) < 0.04 && abs(error_z) < 0.04)
+	    if(abs(error_x)<= goal_reached_threshold && abs(error_y) <= goal_reached_threshold && abs(error_z) <= goal_reached_threshold)
+	     {
 		status = "GOAL REACHED";
+		goal_reached_threshold = GOAL_REACH_THRESHOLD_INIT;
+		count = 0;
+	     }
+	    else
+  	    {	    
+		    count++;
+		    if(count > 300)
+		    {
+			if(goal_reached_threshold < GOAL_REACH_THRESHOLD_MAX)
+				goal_reached_threshold+=0.01/50.0;
+		    }
+	    }
 
-	    if(abs(error_x)>0.6 && abs(error_y) > 0.6 && abs(error_z) > 0.6)
+	    if(abs(error_x)>0.4 && abs(error_y) > 0.4 && abs(error_z) > 0.4)
 	    {
 		status = "OUT OF BOUNDS";
 		state = EMERGENCY;

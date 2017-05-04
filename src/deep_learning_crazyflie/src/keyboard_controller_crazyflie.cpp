@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "deep_learning_crazyflie/TunePID.h"
 #include "deep_learning_crazyflie/Status.h"
+#include <thread>
 
 #define KEYCODE_RA 0x43
 #define KEYCODE_LA 0x44
@@ -58,6 +59,8 @@
 #define KP_XY_OFFSET 0.25
 #define KI_XY_OFFSET 0.25
 #define KD_XY_OFFSET 0.25
+
+
 
 
 using namespace geometry_msgs;
@@ -156,6 +159,10 @@ void TeleopCrazyflie::executeTrajectory()
 
      while(execute_trajectory)
      {
+
+	if(state == EMERGENCY)
+		return;
+	
         deep_learning_crazyflie::Status srv;
 
         if(!status_request_client.call(srv))
@@ -207,14 +214,16 @@ void TeleopCrazyflie::executeTrajectory()
 
 		if(status == "GOAL REACHED")
 		{
+
 		    if(!point_1_reached)
 		    {
+			    ros::Duration(3).sleep();
 			    ROS_INFO("Going Right");
 			    twist.linear.z = 0.25;
 			    twist.linear.x = 0.0;
 			    twist.linear.y = 0.25;
 			    cmd_pub_.publish(twist); 
-			    //ros::Duration(3).sleep();
+			    ros::Duration(5).sleep();
 			    point_1_reached = true;
 		    }
 
@@ -225,7 +234,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    twist.linear.x = 0.25;
 			    twist.linear.y = 0.25;
 			    cmd_pub_.publish(twist); 
-			    ros::Duration(3).sleep();
+			    ros::Duration(5).sleep();
 			    point_2_reached = true;
 		    }
 
@@ -236,7 +245,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    twist.linear.x = 0.25;
 			    twist.linear.y = -0.25;
 			    cmd_pub_.publish(twist); 
-			    ros::Duration(3).sleep();
+			    ros::Duration(5).sleep();
 			    point_3_reached = true;
 		    }
 
@@ -247,7 +256,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    twist.linear.x = -0.25;
 			    twist.linear.y = -0.25;
 			    cmd_pub_.publish(twist); 
-			    ros::Duration(3).sleep();
+			    ros::Duration(5).sleep();
 			    point_4_reached = true;
 		    }
 
@@ -258,7 +267,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    twist.linear.x = 0.0;
 			    twist.linear.y = 0.0;
 			    cmd_pub_.publish(twist); 
-			    ros::Duration(3).sleep();
+			    ros::Duration(5).sleep();
 			    point_5_reached = true;
 		    }
 
@@ -396,7 +405,9 @@ void TeleopCrazyflie::keyLoop()
 
       case KEYCODE_E:
         ROS_INFO("Executing Trajectory");
-	executeTrajectory();
+	{
+	std::thread TrajectoryServer(&TeleopCrazyflie::executeTrajectory,this);
+	TrajectoryServer.join();}
         break;
 
 
