@@ -29,6 +29,7 @@ import rospy
 import time
 import traceback
 import matplotlib.pyplot as plotter
+import numpy
 
 from QLearning import QLearner
 from rospy.exceptions import ROSException
@@ -39,15 +40,116 @@ from rospy.exceptions import ROSException
 ##
 ###########################################
 
-EPOCHS = 500
-FPS = 20
-STEPS = FPS*20
+FPS = 13
+STEPS = FPS*15
+EPOCHS = 10*(FPS*60*60)
 STEP_RANGE = range(0,STEPS)
 EPOCH_RANGE = range(0,EPOCHS)
-
-FUNC_APPROX_FLAG = False
-EXP_REPLAY_FLAG = None
+TUNEPARAM = 'Z'
+MODE = 'behavioral cloning'
 TRAIN_FLAG = True
+
+###########################################
+##
+##	HELPER FUNCTIONS
+##
+###########################################
+
+def init_controllers() :
+	
+	EPSILON = 0.0
+
+	if TRAIN_FLAG is True :
+		EPSILON = 1.0
+
+	position_z_controller = QLearner(param = 'Z', mode = MODE, action_limits = [20000,55000], action_step_size = 87.5, epsilon = EPSILON)
+	position_y_controller = QLearner(param = 'Y', mode = MODE, action_limits = [-10,10], action_step_size = 0.05, epsilon = EPSILON)
+	position_x_controller = QLearner(param = 'X', mode = MODE, action_limits = [-10,10], action_step_size = 0.05, epsilon = EPSILON)
+
+	return [position_z_controller,position_y_controller,position_x_controller]
+
+def run(controllers, cmd_publisher) :
+
+	cmd = Twist()
+
+	for controller in controllers:
+
+		if controller.param == 'Z' :
+
+			cmd.linear.z = controller.run()
+			print "Thrust = " + str(cmd.linear.z)
+
+		elif controller.param == 'Y' :
+
+			cmd.linear.y = controller.run()
+			print "Roll = " + str(cmd.linear.y)
+
+		elif controller.param == 'X' :
+
+			cmd.linear.x = controller.run()
+			print "Pitch = " + str(cmd.linear.x)
+
+	cmd_publisher.publish(cmd)
+
+def epsilon_decay(controllers) :
+	
+	for controller in controllers :
+
+		controller.decrement_epsilon(STEPS*EPOCHS)
+
+
+def update(controllers) :
+	
+	reward = 0.0
+
+	for controller in controllers:
+
+		reward+=controller.update_policy()
+
+	return reward
+
+
+def tune_pid(controllers, param, val, coeff) :
+	
+	for controller in controllers :
+	
+		if controller.param == param and controller.controller == 'PID':
+
+			if coeff == 'kp' :
+
+				controller.kp += val
+
+			elif coeff == 'kd' :
+				
+				controller.kd += val
+
+		        print param+" Kd Value = " + str(controller.kd)
+		        print param+" Kp Value = " + str(controller.kp)
+
+def check_validity(controllers) :
+
+	for controller in controllers :
+
+		if controller.check_validity() is False :
+
+			return False
+
+	return True
+
+def extract_state(controllers,param) :
+
+	for controller in controllers :
+
+		if controller.param == param :
+
+			return controller.state[0]
+
+def randomize_target(controllers,min_value,max_value) :
+
+	for controller in controllers :
+		
+		controller.setpoint = round(numpy.random.uniform(min_value,max_value),max_value)
+
 
 ###########################################
 ##
@@ -58,148 +160,187 @@ TRAIN_FLAG = True
 if __name__ == '__main__':
 
 	#Initialize ros node
-	rospy.init_node('QLearner', anonymous=True)
+	rospy.init_node('crazyflie_qlearning_node')
 
-	#Parse command line arguments to check if the user wants to enable function approximation, experience replay or random opponent
-
+	#Parse command line arguments to check if the user wants to enable training and whether to activate dqn or normal q learning
 	argv = sys.argv[1:]
 
    	try:
-      		opts, args = getopt.getopt(argv,"f:e:",["func_approx=","exp_replay="])
+      		opts, args = getopt.getopt(argv,"b:t:",["behavioral_cloning=","train="])
 
    	except getopt.GetoptError:	
-      		print 'Usage: python Train.py -f <bool> -e <bool>'
+      		print 'Usage: python Train.py -b <bool> -t <bool>'
       		sys.exit(2)
    	
 	for opt, arg in opts:
 
-     		if opt in ("-f", "--func_approx"):
+     		if opt in ("-b", "--behavioral_cloning"):
 
 			if arg == 'True' :
-				FUNC_APPROX_FLAG = True
+				MODE = 'behavioral cloning'
 
 			elif arg == 'False' :
-				FUNC_APPROX_FLAG = False
+				MODE = 'reinforcement learning'
 
 			else :
-				print 'Usage: python Train.py -f <bool> -e <bool>'
+				print 'Usage: python Train.py -b <bool> -t <bool>'
 			
 				sys.exit(2)
 
-		elif opt in ("-e", "--exp_replay") :
+		elif opt in ("-t", "--train") :
 
 			if arg == 'True' :
-				exp_replay_flag = True
+				TRAIN_FLAG = True
 
 			elif arg == 'False' :
-				exp_replay_flag = False
+				TRAIN_FLAG = False
 
 			else :
-				print 'Usage: python Train.py -f <bool> -e <bool>'
+				print 'Usage: python Train.py -b <bool> -t <bool>'
 
 				sys.exit(2)
 
+
+	if MODE == 'behavioral cloning' :
+
+		#Initialize position controllers as QLearning Agents
+		controllers = init_controllers()
+
+
+	elif MODE == 'reinforcement learning':
+
+		cmd_topic = 'crazyflie/deep_learning/cmd_vel'
+
+		cmd_publisher = rospy.Publisher(cmd_topic, Twist, queue_size = 1)
+
+		rate = rospy.Rate(FPS)
+
+		pygame.init()
+		pygame.display.set_mode((20, 20))
+		clock = pygame.time.Clock()
+		rewards_per_episode = []
+		count = 0
+
+		#Initialize position controllers as DQN Agents
+		controllers = init_controllers()
+
+		print "initialized"
+
+		#If the user wants to train
+		if TRAIN_FLAG :
+
 		
+			#For n episodes and m steps keep looping
+		 	for i in EPOCH_RANGE :
+
+			
+				#Randomize setpoints for all the controllers once in 15 episodes
+				if i%15 == 0 :
+
+					randomize_target(controllers,0.5,2)
+		
+				#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
+				total_reward_per_episode = 0.0			
+
+				for j in STEP_RANGE :
+
+					run(controllers,cmd_publisher)
+
+					rate.sleep()
+
+					total_reward_per_episode += update(controllers)
+					epsilon_decay(controllers)
+
+					#Reset if drone goes out of bounds
+					if check_validity(controllers) is False :
+
+						#simulator_reset(controllers, cmd_publisher, gazebo_publisher)
+						rate.sleep()
+						break
+
+					for event in pygame.event.get():
+
+						if event.type == pygame.QUIT:
+
+						    #simulator_reset(controllers, cmd_publisher, gazebo_publisher)
+						    pygame.quit(); 
+						    sys.exit() 
+
+						#For tuning PID controllers  
+						if event.type == pygame.KEYDOWN :
+
+						    if event.key == pygame.K_UP:
+							tune_pid(controllers, TUNEPARAM , 0.5, 'kp') 
+				
+						    if event.key == pygame.K_DOWN:
+							tune_pid(controllers, TUNEPARAM , -0.5, 'kp') 
+
+						    if event.key == pygame.K_LEFT:
+							tune_pid(controllers, TUNEPARAM, 0.5, 'kd') 
+
+						    if event.key == pygame.K_RIGHT:
+							tune_pid(controllers, TUNEPARAM , -0.5, 'kd') 
+
+					    	    if event.key == pygame.K_q:
+							#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
+							time.sleep(2)
+							break;
+
+					count += 1
+
+
+					print " Count = " + str(count) +" ,Epsilon = " + str(controllers[0].epsilon)
 	
-	print "initialized"
+				rewards_per_episode.append(total_reward_per_episode)
+	
+				print '\n \n \n rewards =' +str(total_reward_per_episode) + " ,epoch = "+str(i)	
 
-	rate = rospy.Rate(12)
-	epsilon_decay = []
-	pygame.init()
-	pygame.display.set_mode((20, 20))
-	clock = pygame.time.Clock()
-	rewards_per_episode = []
-	count = 0
-	total_reward_per_episode = 0
-
-	if TRAIN_FLAG :
-
-		#Initialize thrust controller as a DQN Agent
-		thrust_controller = QLearner(param = 'Thrust', controller = 'PID', setpoint = 1.0)
-
-	 	while True :
 		
-			if thrust_controller.reset_flag is False and thrust_controller.initialized  is True :
-				thrust_controller.play()
+				clock.tick(FPS*2)
+
+			plotter.figure()		
+
+			plotter.plot(EPOCH_RANGE, rewards_per_episode,'g',label='Rewards' )
+
+			plotter.xlabel('Episode')
+			plotter.ylabel('Rewards')
+
+			plotter.title('Learning Curve ')
+
+			plotter.savefig('../figures/LearningCurve.png')
+
+			plotter.show()
+
+		else :
+
+			#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
+		
+			count = 0
+			states = []
+			while not rospy.is_shutdown():
+
+				count = count + 1
+				run(controllers,cmd_publisher)
 				rate.sleep()
-				total_reward_per_episode += thrust_controller.update_policy()
-				thrust_controller.decrement_epsilon(STEPS*EPOCHS)
-
-			if abs(thrust_controller.state[0]) > 1.5* abs(thrust_controller.initial_state[0]) or  abs(thrust_controller.state[1]) > 5  :
-
-				thrust_controller.reset()
-				rate.sleep()
-				print "Resetting and breaking out of limits"
-				break
-
-			for event in pygame.event.get():
-
-				if event.type == pygame.QUIT:
-				    thrust_controller.reset()
-				    pygame.quit(); 
-				    sys.exit() 
-
-				if event.type == pygame.KEYDOWN and thrust_controller.controller == 'PID':
-
-				    if event.key == pygame.K_UP:
-					thrust_controller.kp += 500
 			
-				    if event.key == pygame.K_DOWN:
-					thrust_controller.kp -= 500
+				#if check_validity(controllers) is False :
+					#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
 
-				    if event.key == pygame.K_LEFT:
-					thrust_controller.kd += 500
+				states.append(extract_state(controllers,'Thrust'))
 
-				    if event.key == pygame.K_RIGHT:
-					thrust_controller.kd -= 500
+				if count > 500 :
+					break
 
-			    	    if event.key == pygame.K_r:
-					thrust_controller.reset()
-					time.sleep(2)
-
-			    	    if event.key == pygame.K_e:
-					thrust_controller.reset_flag = False
-
-			    	    if event.key == pygame.K_q:
-					thrust_controller.reset()
-					time.sleep(2)
-					break;
-
-
-				    print "Kd Value = " + str(thrust_controller.kd)
-				    print "Kp Value = " + str(thrust_controller.kp)
-			
-				    print " Count = " + str(count) +" ,Epsilon = " + str(thrust_controller.epsilon)
+			plotter.figure()		
+			plotter.plot(range(0,len(states)), states ,'g',label='Error' )
+			plotter.xlabel('Time')
+			plotter.ylabel('Error')
+			plotter.title('Learning Curve - PID ')
+			plotter.savefig('../figures/LearningCurvePID.png')
+			plotter.show()
 
 	else :
-		thrust_controller = QLearner( param = 'Thrust', controller = 'PID', setpoint = 0.5, epsilon = -1)
-		thrust_controller.reset()
-		
-		count = 0
-		states = []
-		while not rospy.is_shutdown():
-
-			count = count + 1
-
-			thrust_controller.play()
-			rate.sleep()
-			#thrust_controller.update_policy()
-
-			if abs(thrust_controller.state[0]) > 2* abs(thrust_controller.initial_state[0]) or  abs(thrust_controller.state[1]) > 10  :
-				thrust_controller.reset()
-
-			states.append(thrust_controller.state[0])
-
-			if count > 500 :
-				break
-
-		plotter.figure()		
-		plotter.plot(range(0,len(states)), states ,'g',label='Error' )
-		plotter.xlabel('Time')
-		plotter.ylabel('Error')
-		plotter.title('Pitch Learning Curve - PID ')
-		plotter.savefig('../figures/PitchLearningCurvePID2.png')
-		plotter.show()
+		print "Unknown Mode : not available"
 		
 
 	rospy.spin()
@@ -208,4 +349,5 @@ if __name__ == '__main__':
 
 
 		
+
 
