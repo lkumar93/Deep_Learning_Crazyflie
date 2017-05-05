@@ -52,6 +52,7 @@
 #define LAND 3
 #define EMERGENCY 4
 #define CALIBRATE 5
+#define REINFORCEMENT_LEARNING 6
 
 #define X_TUNE 0
 #define Y_TUNE 1
@@ -75,7 +76,6 @@ class CrazyfliePositionController
 
  public:
    CrazyfliePositionController();
-   void keyLoop();
    void getGroundTruth(const geometry_msgs::PoseStampedConstPtr& OptiTrackPacket);
    void cmdSubscriber(const geometry_msgs::TwistConstPtr& cmd_pos);
    void stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state);
@@ -103,7 +103,7 @@ class CrazyfliePositionController
    ros::ServiceServer pid_tuner_service,status_request_service;
 
    geometry_msgs::Twist cmd;
-   ros::Timer takeoff_timer,land_timer, pos_ctrl_timer, emergency_timer,keyloop_timer;
+   ros::Timer takeoff_timer,land_timer, pos_ctrl_timer, emergency_timer;
 
    // In m
    double initial_position_x, initial_position_y, initial_position_z;
@@ -515,7 +515,7 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 		    if(count > 500)
 		    {
 			if(goal_reached_threshold < GOAL_REACH_THRESHOLD_MAX)
-				goal_reached_threshold+=0.01/50.0;
+				goal_reached_threshold+=0.01/100.0;
 		    }
 	    }
 
