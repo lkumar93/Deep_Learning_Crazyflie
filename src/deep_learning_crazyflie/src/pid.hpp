@@ -24,14 +24,20 @@ public:
         , m_integral(0)
         , m_previousError(0)
         , m_previousTime(ros::Time::now())
+	, m_dError(0.0)
     {
     }
 
     void reset()
-    {
-        m_integral = 0;
+    {   m_integral = 0;
         m_previousError = 0;
+	m_dError = 0;
         m_previousTime = ros::Time::now();
+    }
+
+    float velocity()
+    {
+	return m_dError;
     }
 
     void setIntegral(float integral)
@@ -80,17 +86,13 @@ public:
         float d = 0;
         if (dt > 0)
         {
-            d = m_kd * (error - m_previousError) / dt;
+	    m_dError = (error - m_previousError) / dt ;
+            d = m_kd * m_dError;
         }
         float i = m_ki * m_integral;
         float output = p + d + i;
         m_previousError = error;
         m_previousTime = time;
-        // self.pubOutput.publish(output)
-        // self.pubError.publish(error)
-        // self.pubP.publish(p)
-        // self.pubD.publish(d)
-        // self.pubI.publish(i)
         return std::max(std::min(output, m_maxOutput), m_minOutput);
     }
 
@@ -104,5 +106,6 @@ private:
     float m_integratorMax;
     float m_integral;
     float m_previousError;
+    float m_dError;
     ros::Time m_previousTime;
 };

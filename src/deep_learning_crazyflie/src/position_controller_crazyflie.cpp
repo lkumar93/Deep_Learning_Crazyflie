@@ -503,7 +503,7 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	    ROS_INFO("ERROR POSITION : x= %f, y= %f, z= %f ",error_x,error_y,error_z);
 	    ROS_INFO(" ");
 
-	    if(abs(error_x)<= goal_reached_threshold && abs(error_y) <= goal_reached_threshold && abs(error_z) <= goal_reached_threshold)
+	    if(abs(error_x)<= goal_reached_threshold && abs(error_y) <= goal_reached_threshold && abs(error_z) <= goal_reached_threshold && abs(pidX.velocity()) <= goal_reached_threshold && abs(pidY.velocity()) <= goal_reached_threshold && abs(pidZ.velocity()) <= goal_reached_threshold)
 	     {
 		status = "GOAL REACHED";
 		goal_reached_threshold = GOAL_REACH_THRESHOLD_INIT;
@@ -512,7 +512,7 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	    else
   	    {	    
 		    count++;
-		    if(count > 300)
+		    if(count > 500)
 		    {
 			if(goal_reached_threshold < GOAL_REACH_THRESHOLD_MAX)
 				goal_reached_threshold+=0.01/50.0;
