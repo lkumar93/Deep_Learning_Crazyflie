@@ -188,7 +188,7 @@ class QLearner:
 	self.epochs += 1
 
 	#Save policy once in every 10000 episodes
-	if self.epochs % 1000 == 0 :
+	if self.epochs % 100 == 0 :
 		#Save the updated policy
 		self.save_policy()	
 
@@ -280,8 +280,8 @@ class QLearner:
 	#Gaussian Reward Function
 	if self.param == 'Z' :
 		#Add a gain term that depends on current action(thrust) to overcome ground effect
-		ground_effect_gain = (self.current_action*(0.1+state[2])/(1+10*abs(state[0]) +10*abs(state[1]))) / (self.max_value)
-		reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))+ ground_effect_gain
+		ground_effect_gain = (self.current_action*(5+state[2])/(1+10*abs(state[0]) +10*abs(state[1]))) / (self.max_value)
+		reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))+ground_effect_gain
 	else :
 		reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))
 	
@@ -300,14 +300,14 @@ class QLearner:
 		print 'Invalid Param'
 		return
 
-	state = round(value,3)
+	state = round(value,2)
 	dt = msg.header.stamp.to_sec() - self.timestamp
 	ground_distance = round(msg.twist.linear.z, 2)
 
 	if self.param == 'Z' :
-		self.state = (state, round((state-self.state[0])/dt,3),ground_distance)
+		self.state = (state, round((state-self.state[0])/dt,2),ground_distance)
 	else :
-		self.state = (state, round((state-self.state[0])/dt,3))
+		self.state = (state, round((state-self.state[0])/dt,2))
 
 	self.timestamp = msg.header.stamp.to_sec()
 
@@ -353,7 +353,7 @@ class QLearner:
 				
 			self.current_count = count
 
-			time.sleep(0.01)
+			time.sleep(0.0095)
 
 			self.update_policy()
 
