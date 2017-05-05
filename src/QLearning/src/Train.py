@@ -48,6 +48,9 @@ EPOCH_RANGE = range(0,EPOCHS)
 TUNEPARAM = 'Z'
 MODE = 'behavioral cloning'
 TRAIN_FLAG = True
+SETPOINT_X = 0.0
+SETPOINT_Y = 0.0
+SETPOINT_Z = 0.25
 
 ###########################################
 ##
@@ -62,9 +65,9 @@ def init_controllers() :
 	if TRAIN_FLAG is True :
 		EPSILON = 1.0
 
-	position_z_controller = QLearner(param = 'Z', mode = MODE, action_limits = [20000,55000], action_step_size = 175, epsilon = EPSILON)
-	position_y_controller = QLearner(param = 'Y', mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
-	position_x_controller = QLearner(param = 'X', mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
+	position_z_controller = QLearner(param = 'Z',setpoint=SETPOINT_Z, mode = MODE, action_limits = [20000,55000], action_step_size = 175, epsilon = EPSILON)
+	position_y_controller = QLearner(param = 'Y',setpoint=SETPOINT_Y, mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
+	position_x_controller = QLearner(param = 'X',setpoint=SETPOINT_X, mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
 
 	return [position_z_controller,position_y_controller,position_x_controller]
 

@@ -13,6 +13,7 @@
 #define KEYCODE_UA 0x41
 #define KEYCODE_DA 0x42
 #define KEYCODE_Q 0x71
+#define KEYCODE_R 0x72
 #define KEYCODE_W 0x77
 #define KEYCODE_S 0x73
 #define KEYCODE_A 0x61
@@ -25,6 +26,7 @@
 #define KEYCODE_C 0x63
 #define KEYCODE_E 0x65
 
+
 #define POSITION_MODE 0
 #define ORIENTATION_MODE 1
 #define PID_TUNING_MODE 2
@@ -35,6 +37,7 @@
 #define LAND 3
 #define EMERGENCY 4
 #define CALIBRATE 5
+#define REINFORCEMENT_LEARNING 6
 
 #define X_TUNE 0
 #define Y_TUNE 1
@@ -315,6 +318,7 @@ void TeleopCrazyflie::keyLoop()
   puts("T - Take Off");
   puts("L - Land");
   puts("E - Execute Trajectory");  
+  puts("R - Reinforcement Learning");  
 
   for(;;)
   {
@@ -378,6 +382,16 @@ void TeleopCrazyflie::keyLoop()
 	state_msg.data = state;
 	state_pub_.publish(state_msg);
         break;
+
+      case KEYCODE_R:
+        ROS_INFO("REINFORCEMENT LEARNING");
+        mode = REINFORCEMENT_LEARNING;
+	state = REINFORCEMENT_LEARNING;
+	state_msg.data = state;
+	state_pub_.publish(state_msg);
+	dirty = true;
+        break;
+
 
 
       case KEYCODE_L:
