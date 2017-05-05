@@ -49,19 +49,16 @@
 #define KD_Z_OFFSET 100.0
 
 #define KP_X_INIT 40.0
-#define KI_X_INIT 2.0
-#define KD_X_INIT 30.0
+#define KI_X_INIT 3.0
+#define KD_X_INIT 20.0
 
 #define KP_Y_INIT 40.0
-#define KI_Y_INIT 2.0
-#define KD_Y_INIT 30.0
+#define KI_Y_INIT 3.0
+#define KD_Y_INIT 20.0
 
 #define KP_XY_OFFSET 0.25
 #define KI_XY_OFFSET 0.25
 #define KD_XY_OFFSET 0.25
-
-
-
 
 using namespace geometry_msgs;
 using namespace std;
@@ -140,7 +137,8 @@ int main(int argc, char** argv)
 
   signal(SIGINT,quit);
 
-  teleop_crazyflie.keyLoop();
+  std::thread KeyboardThread(&TeleopCrazyflie::keyLoop,teleop_crazyflie);
+  KeyboardThread.join();
   
   return(0);
 }
@@ -217,11 +215,11 @@ void TeleopCrazyflie::executeTrajectory()
 
 		    if(!point_1_reached)
 		    {
-			    ros::Duration(3).sleep();
-			    ROS_INFO("Going Right");
+			    ros::Duration(6).sleep();
+			    ROS_INFO("Going Left");
 			    twist.linear.z = 0.25;
 			    twist.linear.x = 0.0;
-			    twist.linear.y = 0.25;
+			    twist.linear.y = -0.25;
 			    cmd_pub_.publish(twist); 
 			    ros::Duration(5).sleep();
 			    point_1_reached = true;
@@ -232,7 +230,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    ROS_INFO("Going Forward");
 			    twist.linear.z = 0.25;
 			    twist.linear.x = 0.25;
-			    twist.linear.y = 0.25;
+			    twist.linear.y = -0.25;
 			    cmd_pub_.publish(twist); 
 			    ros::Duration(5).sleep();
 			    point_2_reached = true;
@@ -240,10 +238,10 @@ void TeleopCrazyflie::executeTrajectory()
 
 		    else if(!point_3_reached)
 		    {
-			    ROS_INFO("Going Left");
+			    ROS_INFO("Going Right");
 			    twist.linear.z = 0.25;
 			    twist.linear.x = 0.25;
-			    twist.linear.y = -0.25;
+			    twist.linear.y = 0.25;
 			    cmd_pub_.publish(twist); 
 			    ros::Duration(5).sleep();
 			    point_3_reached = true;
@@ -254,7 +252,7 @@ void TeleopCrazyflie::executeTrajectory()
 			    ROS_INFO("Going Backward");
 			    twist.linear.z = 0.25;
 			    twist.linear.x = -0.25;
-			    twist.linear.y = -0.25;
+			    twist.linear.y = 0.25;
 			    cmd_pub_.publish(twist); 
 			    ros::Duration(5).sleep();
 			    point_4_reached = true;
@@ -351,6 +349,7 @@ void TeleopCrazyflie::keyLoop()
    //ros::Duration(0.05).sleep();
 
     std_msgs::Int32 state_msg;
+    geometry_msgs::Twist twist;
 
 
     switch(c)
@@ -373,6 +372,9 @@ void TeleopCrazyflie::keyLoop()
         ROS_INFO("CALIBRATE");
 	state = CALIBRATE;	
 	dirty = true;
+	goal_y = 0;
+	goal_x = 0;
+	goal_z = 0.25;
 	state_msg.data = state;
 	state_pub_.publish(state_msg);
         break;
@@ -436,6 +438,9 @@ void TeleopCrazyflie::keyLoop()
 	roll = 0;
 	pitch = 0;
         yawrate = 0;
+	goal_y = 0;
+	goal_x = 0;
+	goal_z = 0.25;
         dirty = true;
 	state_msg.data = state;
 	state_pub_.publish(state_msg);
@@ -555,7 +560,7 @@ void TeleopCrazyflie::keyLoop()
 
     }
    
-    geometry_msgs::Twist twist;
+
 
     twist.angular.y = yawrate;
 
