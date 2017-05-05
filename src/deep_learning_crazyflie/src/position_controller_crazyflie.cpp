@@ -12,19 +12,19 @@
 #include "deep_learning_crazyflie/TunePID.h"
 #include "deep_learning_crazyflie/Status.h"
 
-#define KP_X 45.0
-#define KI_X 2.5
-#define KD_X 52.0
+#define KP_X 40.0
+#define KI_X 3.0
+#define KD_X 20.0
 
-#define KP_Y 45.0
-#define KI_Y 2.5
-#define KD_Y 52.0
+#define KP_Y 40.0
+#define KI_Y 3.0
+#define KD_Y 20.0
 
 //#define KP_Z 1800000.0
 //#define KI_Z 1800.0
 //#define KD_Z 18000.0
 
-#define KP_Z 5500.0
+#define KP_Z 5000.0
 #define KI_Z 3500.0
 #define KD_Z 6500.0
 
@@ -34,17 +34,17 @@
 #define MAX_OUTPUT_Z 55000.0
 #define MIN_OUTPUT_Z 20000.0
 
-#define INTEGRATOR_MAX_X 0.1
-#define INTEGRATOR_MIN_X -0.1
+#define INTEGRATOR_MAX_X 0.2
+#define INTEGRATOR_MIN_X -0.2
 
-#define MAX_OUTPUT_X 10.0
-#define MIN_OUTPUT_X -10.0
+#define MAX_OUTPUT_X 25.0
+#define MIN_OUTPUT_X -25.0
 
-#define INTEGRATOR_MAX_Y 0.1
-#define INTEGRATOR_MIN_Y -0.1
+#define INTEGRATOR_MAX_Y 0.2
+#define INTEGRATOR_MIN_Y -0.2
 
-#define MAX_OUTPUT_Y 10.0
-#define MIN_OUTPUT_Y -10.0
+#define MAX_OUTPUT_Y 25.0
+#define MIN_OUTPUT_Y -25.0
 
 #define WAITING 0
 #define TAKE_OFF 1
@@ -57,7 +57,7 @@
 #define Y_TUNE 1
 #define Z_TUNE 2
 
-#define TAKEOFF_GAIN 20000
+#define TAKEOFF_GAIN 25000
 
 #define GOAL_REACH_THRESHOLD_INIT 0.01
 #define GOAL_REACH_THRESHOLD_MAX 0.01
@@ -173,9 +173,9 @@ CrazyfliePositionController::CrazyfliePositionController():
   ground_truth_sub_ = nh_.subscribe("/crazyflie/ground_truth/pose_3d" , 1, &CrazyfliePositionController::getGroundTruth, this);
   state_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_state" , 1, &CrazyfliePositionController::stateSubscriber, this);
   cmd_sub_ = nh_.subscribe("crazyflie/deep_learning/cmd_pos" , 1, &CrazyfliePositionController::cmdSubscriber, this);
-  takeoff_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::takeoff, this);
-  pos_ctrl_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::pos_ctrl, this);
-  land_timer = nh_.createTimer(ros::Duration(0.02), &CrazyfliePositionController::land, this);
+  takeoff_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::takeoff, this);
+  pos_ctrl_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::pos_ctrl, this);
+  land_timer = nh_.createTimer(ros::Duration(0.01), &CrazyfliePositionController::land, this);
   emergency_timer = nh_.createTimer(ros::Duration(0.001), &CrazyfliePositionController::emergency, this);
   pid_tuner_service = nh_.advertiseService("crazyflie/tune_pid", &CrazyfliePositionController::pid_tuner, this);
   status_request_service = nh_.advertiseService("crazyflie/request_status", &CrazyfliePositionController::requestStatus, this);
@@ -358,6 +358,11 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 {
    if(state==TAKE_OFF)
    {
+
+	goal_x = 0.0;
+	goal_y = 0.0;
+	goal_z = 0.25;
+
  	if(calibrated)
 	{
 		float dt = e.current_real.toSec() - e.last_real.toSec();
@@ -413,21 +418,16 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 	{
 	    float dt = e.current_real.toSec() - e.last_real.toSec();
 
-	    goal_x = 0.0;
-	    goal_y = 0.0;
-	    goal_z = 0.0;
-
-	    if(current_position_z <= initial_position_z + 0.1)
+	    if(current_position_z <= initial_position_z + 0.1 )
 	    {
-		if(thrust > MIN_OUTPUT_Z)
+		if(cmd.linear.z > MIN_OUTPUT_Z+5000 && current_position_z >= initial_position_z + 0.05)
 		{
-		    thrust -= 10000 * dt;
 		    cmd.linear.x = 0.0;
 		    cmd.linear.y = 0.0;
 		    cmd.angular.y = 0.0;
-		    cmd.linear.z = thrust;
+		    cmd.linear.z -= 50000 * dt;
 		    vel_pub_.publish(cmd);
-		    ROS_INFO("LANDING : Decreasing Thrust = %f", thrust);
+		    ROS_INFO("LANDING : Decreasing Thrust = %f", cmd.linear.z);
 
 		    status = "LANDING";
 		}
@@ -444,6 +444,9 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 			state = WAITING;
 			status = "LANDED";
 			ROS_INFO("LANDED");
+	   	        goal_x = 0.0;
+		        goal_y = 0.0;
+		        goal_z = 0.0;
 		}
 	    }
 	   else
@@ -491,7 +494,7 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	{
 	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
             cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
-            cmd.angular.y = yawrate;
+            //cmd.angular.y = yawrate;
             cmd.linear.z = pidZ.update(current_position_z, initial_position_z + goal_z);
 
 	    ROS_INFO("POSITION CONTROL CMD : Pitch= %f, Roll= %f, Thrust= %f ",cmd.linear.x,cmd.linear.y,cmd.linear.z);
@@ -544,11 +547,12 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
             cmd.linear.y = 0.0;
             cmd.angular.y = 0.0;
             cmd.linear.z = 0.0;
-            vel_pub_.publish(cmd);
-            vel_pub_.publish(cmd);
+	    thrust = 0;
             vel_pub_.publish(cmd);
 	    pidReset();
 	    state = WAITING;
+	    prev_state = WAITING;
+ 	    status="NOT CALIBRATED";
 	    calibrated = false;
 	    inflight = false;
 	    initialized = false;
