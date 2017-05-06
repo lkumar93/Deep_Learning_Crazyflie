@@ -1,3 +1,30 @@
+//
+// THIS FILE CONTAINS THE CRAZYFLIE KEYBOARD TELEOP NODE	
+//
+// COPYRIGHT BELONGS TO THE AUTHOR OF THIS CODE
+//
+// AUTHOR : LAKSHMAN KUMAR
+// AFFILIATION : UNIVERSITY OF MARYLAND, MARYLAND ROBOTICS CENTER
+// EMAIL : LKUMAR93@TERPMAIL.UMD.EDU
+// LINKEDIN : WWW.LINKEDIN.COM/IN/LAKSHMANKUMAR1993
+//
+// THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THE GPLv3 LICENSE
+// THE WORK IS PROTECTED BY COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF
+// THE WORK OTHER THAN AS AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS 
+// PROHIBITED.
+// 
+// BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE TO
+// BE BOUND BY THE TERMS OF THIS LICENSE. THE LICENSOR GRANTS YOU THE RIGHTS
+// CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
+// CONDITIONS.
+//
+
+///////////////////////////////////////////
+//
+//	LIBRARIES
+//
+///////////////////////////////////////////
+
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/Int32.h>
@@ -7,6 +34,12 @@
 #include "deep_learning_crazyflie/TunePID.h"
 #include "deep_learning_crazyflie/Status.h"
 #include <thread>
+
+///////////////////////////////////////////
+//
+//	DEFINITIONS
+//
+///////////////////////////////////////////
 
 #define KEYCODE_RA 0x43
 #define KEYCODE_LA 0x44
@@ -63,10 +96,64 @@
 #define KI_XY_OFFSET 0.25
 #define KD_XY_OFFSET 0.25
 
+
+///////////////////////////////////////////
+//
+//	NAMESPACES
+//
+///////////////////////////////////////////
 using namespace geometry_msgs;
 using namespace std;
 
+///////////////////////////////////////////
+//
+//	GLOBAL VARIABLES
+//
+///////////////////////////////////////////
+int kfd = 0;
+int state = WAITING;
+struct termios cooked, raw;
 
+///////////////////////////////////////////
+//
+//	FUNCTIONS
+//
+///////////////////////////////////////////
+
+void quit(int sig)
+{
+   tcsetattr(kfd, TCSANOW, &cooked);
+   ros::Publisher emergency_pub_, state_pub_;
+   cout<<"Quitting"<<endl;
+   state = EMERGENCY;
+   ros::NodeHandle nh;
+   emergency_pub_= nh.advertise<geometry_msgs::Twist>("crazyflie/deep_learning/cmd_vel", 1);
+   state_pub_ =  nh.advertise<std_msgs::Int32>("crazyflie/deep_learning/cmd_state", 1);
+   geometry_msgs::Twist twist;
+   twist.linear.z = 0.0;
+   twist.linear.x = 0.0;
+   twist.linear.y = 0.0;
+   int count = 0;
+   while(count<1000)
+   {
+	   emergency_pub_.publish(twist);
+	   std_msgs::Int32 state_msg;
+	   state_msg.data = EMERGENCY;
+	   state_pub_.publish(state_msg);
+	   count++;
+   }
+   cout<<" Quitting"<<endl;
+   ros::shutdown();
+   exit(0);
+}
+
+
+
+///////////////////////////////////////////
+//
+//	CLASS
+//
+///////////////////////////////////////////
 class TeleopCrazyflie
  {
 
@@ -88,14 +175,17 @@ class TeleopCrazyflie
    std::string status;
    
  };
-
+///////////////////////////////////////////
+//
+//	MEMBER FUNCTIONS
+//
+///////////////////////////////////////////
 TeleopCrazyflie::TeleopCrazyflie():
   roll(0.0),
   pitch(0.0),
   yawrate(0.0),
   thrust(0.0),
   mode(ORIENTATION_MODE),
-  state(WAITING),
   goal_x(0.0),
   goal_y(0.0),
   goal_z(0.25),
@@ -123,29 +213,6 @@ TeleopCrazyflie::TeleopCrazyflie():
 
 }
 
-int kfd = 0;
-struct termios cooked, raw;
-
-void quit(int sig)
-{
-   tcsetattr(kfd, TCSANOW, &cooked);
-   ros::shutdown();
-   exit(0);
-}
-
-int main(int argc, char** argv)
-{
-  ros::init(argc, argv, "crazyflie_teleop_node");
-  TeleopCrazyflie teleop_crazyflie;
-
-  signal(SIGINT,quit);
-
-  std::thread KeyboardThread(&TeleopCrazyflie::keyLoop,teleop_crazyflie);
-  KeyboardThread.join();
-  
-  return(0);
-}
-
 void TeleopCrazyflie::executeTrajectory()
 {
      std_msgs::Int32 state_msg;
@@ -162,7 +229,21 @@ void TeleopCrazyflie::executeTrajectory()
      {
 
 	if(state == EMERGENCY)
-		return;
+	{
+	   geometry_msgs::Twist twist;
+	   std_msgs::Int32 state_msg;
+	   state_msg.data = state;
+	   state_pub_.publish(state_msg);
+	   thrust = 0;
+
+	   twist.linear.x = 0.0;
+           twist.linear.y = 0.0;
+           twist.angular.y = 0.0;
+           twist.linear.z = 0.0;
+           vel_pub_.publish(twist);
+	   return;
+	}
+
 	
         deep_learning_crazyflie::Status srv;
 
@@ -709,5 +790,23 @@ void TeleopCrazyflie::keyLoop()
 
   }
   return;
+}
+
+///////////////////////////////////////////
+//
+//	MAIN FUNCTION
+//
+///////////////////////////////////////////
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "crazyflie_teleop_node");
+  TeleopCrazyflie teleop_crazyflie;
+  signal(SIGINT,quit);
+  teleop_crazyflie.keyLoop();
+ // std::thread KeyboardThread(&TeleopCrazyflie::keyLoop,teleop_crazyflie);
+ //KeyboardThread.join();
+  
+  return(0);
 }
 
