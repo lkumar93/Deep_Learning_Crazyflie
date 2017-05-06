@@ -33,6 +33,7 @@ import numpy
 
 from QLearning import QLearner
 from rospy.exceptions import ROSException
+from deep_learning_crazyflie.srv import *
 
 ###########################################
 ##
@@ -45,7 +46,6 @@ STEPS = FPS*15
 EPOCHS = 10*(FPS*60*60)
 STEP_RANGE = range(0,STEPS)
 EPOCH_RANGE = range(0,EPOCHS)
-TUNEPARAM = 'Z'
 MODE = 'behavioral cloning'
 TRAIN_FLAG = True
 SETPOINT_X = 0.0
@@ -112,33 +112,6 @@ def update(controllers) :
 	return reward
 
 
-def tune_pid(controllers, param, val, coeff) :
-	
-	for controller in controllers :
-	
-		if controller.param == param and controller.controller == 'PID':
-
-			if coeff == 'kp' :
-
-				controller.kp += val
-
-			elif coeff == 'kd' :
-				
-				controller.kd += val
-
-		        print param+" Kd Value = " + str(controller.kd)
-		        print param+" Kp Value = " + str(controller.kp)
-
-def check_validity(controllers) :
-
-	for controller in controllers :
-
-		if controller.check_validity() is False :
-
-			return False
-
-	return True
-
 def extract_state(controllers,param) :
 
 	for controller in controllers :
@@ -152,6 +125,19 @@ def randomize_target(controllers,min_value,max_value) :
 	for controller in controllers :
 		
 		controller.setpoint = round(numpy.random.uniform(min_value,max_value),max_value)
+
+
+def get_status() :
+
+    rospy.wait_for_service('crazyflie/request_status')
+
+    try:
+        status_client = rospy.ServiceProxy('crazyflie/request_status', Status)
+        return status_client(true).status
+
+    except rospy.ServiceException, e:
+        print "request_status service call failed: %s"%e
+	return "ERROR"
 
 
 ###########################################
@@ -206,7 +192,7 @@ if __name__ == '__main__':
 
 	if MODE == 'behavioral cloning' :
 
-		#Initialize position controllers as QLearning Agents
+		#Initialize position controllers as Behavior Cloning Agents
 		controllers = init_controllers()
 
 
@@ -224,82 +210,90 @@ if __name__ == '__main__':
 		rewards_per_episode = []
 		count = 0
 
-		#Initialize position controllers as DQN Agents
+		#Initialize position controllers as Q Learning Agents
 		controllers = init_controllers()
 
 		print "initialized"
 
+		status = WAITING
+		start = False
+
 		#If the user wants to train
 		if TRAIN_FLAG :
-
 		
-			#For n episodes and m steps keep looping
-		 	for i in EPOCH_RANGE :
+			while True:
 
+				status = get_status()
 			
-				#Randomize setpoints for all the controllers once in 15 episodes
-				if i%15 == 0 :
+				if status is not 'EMERGENCY' and status is not 'NOT CALIBRATED' and status is not 'ERROR' and start is True:
 
-					randomize_target(controllers,0.5,2)
-		
-				#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
-				total_reward_per_episode = 0.0			
-
-				for j in STEP_RANGE :
+					total_reward_per_episode = 0.0			
 
 					run(controllers,cmd_publisher)
 
 					rate.sleep()
 
 					total_reward_per_episode += update(controllers)
+
 					epsilon_decay(controllers)
 
-					#Reset if drone goes out of bounds
-					if check_validity(controllers) is False :
 
-						#simulator_reset(controllers, cmd_publisher, gazebo_publisher)
-						rate.sleep()
-						break
+				for event in pygame.event.get():
 
-					for event in pygame.event.get():
+					if event.type == pygame.QUIT:
+					     start = False
+						cmd = Twist()
+						for i in range(0,1000) :
+							cmd.linear.z = 0.0
+							cmd.linear.x = 0.0
+							cmd.linear.y = 0.0
+							cmd_publisher.publish(cmd)
 
-						if event.type == pygame.QUIT:
+					    pygame.quit(); 
+					    sys.exit() 
 
-						    #simulator_reset(controllers, cmd_publisher, gazebo_publisher)
-						    pygame.quit(); 
-						    sys.exit() 
+					if event.type == pygame.KEYDOWN :
 
-						#For tuning PID controllers  
-						if event.type == pygame.KEYDOWN :
-
-						    if event.key == pygame.K_UP:
-							tune_pid(controllers, TUNEPARAM , 0.5, 'kp') 
-				
-						    if event.key == pygame.K_DOWN:
-							tune_pid(controllers, TUNEPARAM , -0.5, 'kp') 
-
-						    if event.key == pygame.K_LEFT:
-							tune_pid(controllers, TUNEPARAM, 0.5, 'kd') 
-
-						    if event.key == pygame.K_RIGHT:
-							tune_pid(controllers, TUNEPARAM , -0.5, 'kd') 
-
-					    	    if event.key == pygame.K_q:
-							#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
-							time.sleep(2)
-							break;
-
-					count += 1
-
-
-					print " Count = " + str(count) +" ,Epsilon = " + str(controllers[0].epsilon)
+					    if event.key == pygame.K_UP:
+						pass 
 	
-				rewards_per_episode.append(total_reward_per_episode)
+					    elif event.key == pygame.K_DOWN:
+						pass 
+
+					    elif event.key == pygame.K_LEFT:
+						pass
+
+					    elif event.key == pygame.K_RIGHT:
+						pass
+
+					    elif event.key == pygame.K_b:
+						print "starting the reinforcement learning module"
+						start = True
+						time.sleep(2)
+
+				    	    if event.key == pygame.K_q:
+						start = False
+						cmd = Twist()
+						for i in range(0,1000) :
+							cmd.linear.z = 0.0
+							cmd.linear.x = 0.0
+							cmd.linear.y = 0.0
+							cmd_publisher.publish(cmd)
+						print "stopping the reinforcement learning module"
+						time.sleep(2)
+						break;
+
+						count += 1
+
+
+						print " Count = " + str(count) +" ,Epsilon = " + str(controllers[0].epsilon)
 	
-				print '\n \n \n rewards =' +str(total_reward_per_episode) + " ,epoch = "+str(i)	
+						rewards_per_episode.append(total_reward_per_episode)
+	
+						print '\n \n \n rewards =' +str(total_reward_per_episode) + " ,epoch = "+str(i)	
 
 		
-				clock.tick(FPS*2)
+						clock.tick(FPS*2)
 
 			plotter.figure()		
 

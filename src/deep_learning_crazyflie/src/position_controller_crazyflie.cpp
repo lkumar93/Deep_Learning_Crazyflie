@@ -130,6 +130,7 @@ class CrazyfliePositionController
    void run();
    void publish_cmd(double pitch_cmd, double roll_cmd, double thrust_cmd, double yawrate_cmd = 0.0);
    void set_goal(double pos_x, double pos_y, double pos_z, double yawrate_goal = 0.0);
+   void initialize();
 
   
  private:
@@ -234,6 +235,17 @@ void CrazyfliePositionController::publish_cmd(double pitch_cmd, double roll_cmd,
     vel_pub_.publish(cmd);
 }
 
+void CrazyfliePositionController::initialize()
+{
+    pidReset();
+    thrust = 0;
+    state = WAITING;
+    status="NOT CALIBRATED";
+    calibrated = false;
+    inflight = false;
+    initialized = false;
+}
+
 void CrazyfliePositionController::set_goal(double pos_x, double pos_y, double pos_z, double yawrate_goal)
 {
 	goal_x = pos_x;
@@ -271,7 +283,6 @@ void CrazyfliePositionController::pidSet()
     pidZ.setKi(ki_z);
     pidZ.setKd(kd_z);
 
-   // pidReset();
 }
 
 bool CrazyfliePositionController::pid_tuner(deep_learning_crazyflie::TunePID::Request &request,
@@ -361,12 +372,14 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	state_stamped_pub_.publish(stamped_state_msg);
 
 	if(calibrated) 
+	{
 	    	if(abs(error_x) > OUT_OF_BOUNDS_THRESHOLD || abs(error_y) > OUT_OF_BOUNDS_THRESHOLD || abs(error_z) > OUT_OF_BOUNDS_THRESHOLD)
 	    	{
-			status = "OUT OF BOUNDS";
+			status = "EMERGENCY";
 			state = EMERGENCY;
 			ROS_INFO("OUT OF BOUNDS - EMERGENCY STOP");
 	    	}
+	}
 	
 	if(!initialized)
 		initialized = true;
@@ -485,10 +498,8 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 		else
 		{
 			publish_cmd(0.0,0.0,0.0);
-			inflight = false;
-			calibrated = false;
-			state = WAITING;
 			status = "LANDED";
+			initialize();
 			ROS_INFO("LANDED");
 
 		}
@@ -581,13 +592,8 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
    {
 	    ROS_INFO("EMERGENCY STOP"); 
 	    publish_cmd(0.0,0.0,0.0);
-	    thrust = 0;
-	    pidReset();
-	    state = WAITING;
- 	    status="NOT CALIBRATED";
-	    calibrated = false;
-	    inflight = false;
-	    initialized = false;
+	    status = "EMERGENCY";
+	    initialize();
    }
 }
 

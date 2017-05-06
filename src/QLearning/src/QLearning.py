@@ -5,7 +5,7 @@
 #
 # AUTHOR : LAKSHMAN KUMAR
 # AFFILIATION : UNIVERSITY OF MARYLAND, MARYLAND ROBOTICS CENTER
-# EMAIL : LKUMAR93@UMD.EDU
+# EMAIL : LKUMAR93@TERPMAIL.UMD.EDU
 # LINKEDIN : WWW.LINKEDIN.COM/IN/LAKSHMANKUMAR1993
 #
 # THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THE MIT LICENSE
@@ -37,6 +37,8 @@ from geometry_msgs.msg import Point
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TwistStamped
 
+from deep_learning_crazyflie.srv import *
+
 ###########################################
 ##
 ##	CLASSES
@@ -47,7 +49,7 @@ from geometry_msgs.msg import TwistStamped
 class QLearner:
 
     #Initialize the QLearner
-    def __init__(self, param = 'Z',mode='behavioral cloning', setpoint = 0.4, action_limits = [20000, 55000], action_step_size = 1000, state_variance = [0.5,0.5], learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5) :
+    def __init__(self, param = 'Z',mode='behavioral cloning', setpoint = 0.4, action_limits = [20000, 55000], action_step_size = 1000, state_variance = [0.5,0.5], learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5, kp_range = [1000,10000], ki_range = [1000,6000], kd_range = [1000,10000]) :
 
 	self.param = param
 	self.learning_rate = learning_rate
@@ -69,6 +71,12 @@ class QLearner:
 	self.mode = mode
 	self.state_variance = state_variance
 	self.calibrated = False
+	self.kp_max = kp_range[1]
+	self.kp_min = kp_range[0]
+	self.ki_max = ki_range[1]
+	self.ki_min = ki_range[0]
+	self.kd_max = kd_range[1]
+	self.kd_min = kd_range[0]
 
 	cmd_topic = '/crazyflie/deep_learning/cmd_vel'
 	sub_topic = '/crazyflie/deep_learning/state_stamped' #'/'+ drone+'/ground_truth/position'
@@ -76,6 +84,16 @@ class QLearner:
 	self.prev_z = 0.0
 	self.current_z = 0.0
 	self.timestamp = 0.0
+
+	if self.param == 'Z' :
+		self.tune_param = 2
+	elif self.param == 'Y' :
+		self.tune_param = 1
+	elif self.param == 'X' :
+		self.tune_param = 0
+	else :
+		print "No such param available"
+		return
 	
 	rospy.Subscriber(sub_topic, TwistStamped, self.get_state)
 
@@ -86,7 +104,6 @@ class QLearner:
 	self.file_name = '../policies/crazyflie_' + param + '_' + str(self.min_value) + '_' + str(self.max_value) + '_' + str(self.step_size) +'_'+str(self.state_variance[0])+'_'+str(self.state_variance[1]) +'_policy_lt.p'
 
 	self.load_policy()
-
 
     #Take an action
     def run(self) :
@@ -134,6 +151,19 @@ class QLearner:
 	else :
 		print "Cannot execute actions in behavioral cloning mode"
 
+
+
+    def set_pid(kp,ki,kd) :
+
+	rospy.wait_for_service('crazyflie/tune_pid')
+
+	try:
+		pid_tuning_client = rospy.ServiceProxy('crazyflie/tune_pid', TunePID)
+		return 	pid_tuning_client(self.tune_param, kp, ki, kd).success
+
+	except rospy.ServiceException, e:
+		print "tune_pid service call failed: %s"%e
+		return false
 
 
     #Update the Q(s,a) table	
@@ -250,7 +280,7 @@ class QLearner:
 					value = av['value']
 					count = av['count'] + 1
 
-				if av['count'] < 10 and av['action'] in possible_actions:
+				if av['count'] < 10 and av['action'] <=self.max_value and av['action'] >= self.min_value :
 					action = av['action']
 					value = av['value']
 					count = av['count'] + 1
@@ -266,7 +296,7 @@ class QLearner:
 
 		#print sorted_av_table
 		for av in sorted_av_table :
-			if  av['action'] in possible_actions :
+			if av['action'] <=self.max_value and av['action'] >= self.min_value :
 				action = av['action']
 				value = av['value']
 				count = av['count'] + 1
