@@ -37,14 +37,14 @@
 #define INTEGRATOR_MAX_X 0.2
 #define INTEGRATOR_MIN_X -0.2
 
-#define MAX_OUTPUT_X 25.0
-#define MIN_OUTPUT_X -25.0
+#define MAX_OUTPUT_X 20.0
+#define MIN_OUTPUT_X -20.0
 
 #define INTEGRATOR_MAX_Y 0.2
 #define INTEGRATOR_MIN_Y -0.2
 
-#define MAX_OUTPUT_Y 25.0
-#define MIN_OUTPUT_Y -25.0
+#define MAX_OUTPUT_Y 20.0
+#define MIN_OUTPUT_Y -20.0
 
 #define WAITING 0
 #define TAKE_OFF 1
@@ -122,7 +122,7 @@ class CrazyfliePositionController
 
    int count;
 
-   int state, prev_state;
+   int state;
 
    std::string status;
 
@@ -157,7 +157,6 @@ CrazyfliePositionController::CrazyfliePositionController():
   initialized(false),
   inflight(false),
   state(WAITING),
-  prev_state(WAITING),
   goal_reached_threshold(GOAL_REACH_THRESHOLD_INIT),
   count(0),
   pidX(KP_X, KD_X, KD_X, MIN_OUTPUT_X, MAX_OUTPUT_X, INTEGRATOR_MIN_X, INTEGRATOR_MAX_X, "x"),
@@ -349,8 +348,6 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 	{
 		state = cmd_state->data;
 	}
-
-	prev_state = state;
 
 }
 
@@ -551,7 +548,6 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
             vel_pub_.publish(cmd);
 	    pidReset();
 	    state = WAITING;
-	    prev_state = WAITING;
  	    status="NOT CALIBRATED";
 	    calibrated = false;
 	    inflight = false;
