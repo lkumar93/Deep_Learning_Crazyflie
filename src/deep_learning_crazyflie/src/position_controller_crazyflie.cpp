@@ -1,3 +1,31 @@
+//
+// THIS FILE CONTAINS THE CRAZYFLIE POSITION CONTROLLER NODE	
+//
+// COPYRIGHT BELONGS TO THE AUTHOR OF THIS CODE AND WOLFGANG HOENING, USC
+//
+// AUTHOR : LAKSHMAN KUMAR
+// AFFILIATION : UNIVERSITY OF MARYLAND, MARYLAND ROBOTICS CENTER
+// EMAIL : LKUMAR93@TERPMAIL.UMD.EDU
+// LINKEDIN : WWW.LINKEDIN.COM/IN/LAKSHMANKUMAR1993
+//
+// THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THE GPLv3 LICENSE
+// THE WORK IS PROTECTED BY COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF
+// THE WORK OTHER THAN AS AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS 
+// PROHIBITED.
+// 
+// BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE TO
+// BE BOUND BY THE TERMS OF THIS LICENSE. THE LICENSOR GRANTS YOU THE RIGHTS
+// CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
+// CONDITIONS.
+//
+
+
+///////////////////////////////////////////
+//
+//	LIBRARIES
+//
+///////////////////////////////////////////
+
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/TwistStamped.h>
@@ -5,12 +33,16 @@
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/Point.h>
 #include <std_msgs/Int32.h>
-#include <signal.h>
-#include <termios.h>
 #include <stdio.h>
 #include "pid.hpp"
 #include "deep_learning_crazyflie/TunePID.h"
 #include "deep_learning_crazyflie/Status.h"
+
+///////////////////////////////////////////
+//
+//	DEFINITIONS
+//
+///////////////////////////////////////////
 
 #define KP_X 40.0
 #define KI_X 3.0
@@ -19,10 +51,6 @@
 #define KP_Y 40.0
 #define KI_Y 3.0
 #define KD_Y 20.0
-
-//#define KP_Z 1800000.0
-//#define KI_Z 1800.0
-//#define KD_Z 18000.0
 
 #define KP_Z 5000.0
 #define KI_Z 3500.0
@@ -59,17 +87,27 @@
 #define Z_TUNE 2
 
 #define TAKEOFF_GAIN 25000
+#define LANDING_GAIN 50000
 
 #define GOAL_REACH_THRESHOLD_INIT 0.01
 #define GOAL_REACH_THRESHOLD_MAX 0.01
 
-#include <thread> 
+#define OUT_OF_BOUNDS_THRESHOLD 0.7
+
+///////////////////////////////////////////
+//
+//	NAMESPACES
+//
+///////////////////////////////////////////
 
 using namespace geometry_msgs;
 using namespace std;
 
-int kfd = 0;
-struct termios cooked, raw;
+///////////////////////////////////////////
+//
+//	CLASS
+//
+///////////////////////////////////////////
 
 class CrazyfliePositionController
  {
@@ -90,6 +128,8 @@ class CrazyfliePositionController
    void pidReset();
    void pidSet();
    void run();
+   void publish_cmd(double pitch_cmd, double roll_cmd, double thrust_cmd, double yawrate_cmd = 0.0);
+   void set_goal(double pos_x, double pos_y, double pos_z, double yawrate_goal = 0.0);
 
   
  private:
@@ -130,6 +170,11 @@ class CrazyfliePositionController
    
  };
 
+///////////////////////////////////////////
+//
+//	MEMBER FUNCTIONS
+//
+///////////////////////////////////////////
 
 CrazyfliePositionController::CrazyfliePositionController():
   goal_x(0.0),
@@ -178,6 +223,23 @@ CrazyfliePositionController::CrazyfliePositionController():
   emergency_timer = nh_.createTimer(ros::Duration(0.001), &CrazyfliePositionController::emergency, this);
   pid_tuner_service = nh_.advertiseService("crazyflie/tune_pid", &CrazyfliePositionController::pid_tuner, this);
   status_request_service = nh_.advertiseService("crazyflie/request_status", &CrazyfliePositionController::requestStatus, this);
+}
+
+void CrazyfliePositionController::publish_cmd(double pitch_cmd, double roll_cmd, double thrust_cmd, double yawrate_cmd)
+{
+    cmd.linear.x = pitch_cmd;
+    cmd.linear.y = roll_cmd;
+    cmd.angular.y = yawrate_cmd;
+    cmd.linear.z = thrust_cmd;
+    vel_pub_.publish(cmd);
+}
+
+void CrazyfliePositionController::set_goal(double pos_x, double pos_y, double pos_z, double yawrate_goal)
+{
+	goal_x = pos_x;
+	goal_y = pos_y;
+	goal_z = pos_z;
+	yawrate = yawrate_goal;
 }
 
 void CrazyfliePositionController::pidReset()
@@ -297,6 +359,14 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 	stamped_state_msg.twist.linear.z = current_position_z - initial_position_z;
 
 	state_stamped_pub_.publish(stamped_state_msg);
+
+	if(calibrated) 
+	    	if(abs(error_x) > OUT_OF_BOUNDS_THRESHOLD || abs(error_y) > OUT_OF_BOUNDS_THRESHOLD || abs(error_z) > OUT_OF_BOUNDS_THRESHOLD)
+	    	{
+			status = "OUT OF BOUNDS";
+			state = EMERGENCY;
+			ROS_INFO("OUT OF BOUNDS - EMERGENCY STOP");
+	    	}
 	
 	if(!initialized)
 		initialized = true;
@@ -304,14 +374,9 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 
 void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstPtr& cmd_pos)
 {
-	goal_x = cmd_pos->linear.x;
-	goal_y = cmd_pos->linear.y;
-	goal_z = cmd_pos->linear.z;
+	set_goal(cmd_pos->linear.x,cmd_pos->linear.y,cmd_pos->linear.z,cmd_pos->angular.y);
 
-	ROS_INFO("Goal X = %f, Goal Y = %f, Goal Z = %f", goal_x, goal_y,goal_z);
-
-	yawrate =  cmd_pos->angular.y;
-
+	ROS_INFO("GOAL CHANGED : Goal X = %f, Goal Y = %f, Goal Z = %f", goal_x, goal_y,goal_z);
 	status ="GOAL CHANGED";
 
 }
@@ -328,11 +393,8 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 			initial_position_z = current_position_z;
 			pidSet();
 			pidReset();
-			goal_x = 0.0;
-			goal_y = 0.0;
-			goal_z = 0.25;
+			set_goal(0.0,0.0,0.25);
 			count = 0;
-			
 			calibrated = true;
 			status = "CALIBRATED";
 		}
@@ -356,9 +418,7 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
    if(state==TAKE_OFF)
    {
 
-	goal_x = 0.0;
-	goal_y = 0.0;
-	goal_z = 0.25;
+	set_goal(0.0,0.0,0.25);
 
  	if(calibrated)
 	{
@@ -381,11 +441,7 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 		else
 		{
 		    thrust += TAKEOFF_GAIN * dt;
-		    cmd.linear.x = 0.0;
-		    cmd.linear.y = 0.0;
-		    cmd.angular.y = 0.0;
-		    cmd.linear.z = thrust;
-		    vel_pub_.publish(cmd);
+		    publish_cmd(0.0,0.0,thrust);
 		    ROS_INFO("TAKING OFF : Increasing Thrust = %f", thrust);
 		    status = "TAKING OFF";
 		}
@@ -415,46 +471,37 @@ void CrazyfliePositionController::land(const ros::TimerEvent& e)
 	{
 	    float dt = e.current_real.toSec() - e.last_real.toSec();
 
+	    set_goal(goal_x,goal_y,0.0);
+
 	    if(current_position_z <= initial_position_z + 0.1 )
 	    {
 		if(cmd.linear.z > MIN_OUTPUT_Z+5000 && current_position_z >= initial_position_z + 0.05)
 		{
-		    cmd.linear.x = 0.0;
-		    cmd.linear.y = 0.0;
-		    cmd.angular.y = 0.0;
-		    cmd.linear.z -= 50000 * dt;
-		    vel_pub_.publish(cmd);
+		    publish_cmd(0,0,cmd.linear.z-(LANDING_GAIN*dt));
 		    ROS_INFO("LANDING : Decreasing Thrust = %f", cmd.linear.z);
-
 		    status = "LANDING";
 		}
 
 		else
 		{
-		        cmd.linear.x = 0.0;
-		        cmd.linear.y = 0.0;
-		        cmd.angular.y = 0.0;
-		        cmd.linear.z = 0.0;
-		        vel_pub_.publish(cmd);
+			publish_cmd(0.0,0.0,0.0);
 			inflight = false;
 			calibrated = false;
 			state = WAITING;
 			status = "LANDED";
 			ROS_INFO("LANDED");
-	   	        goal_x = 0.0;
-		        goal_y = 0.0;
-		        goal_z = 0.0;
+
 		}
 	    }
 	   else
 	   {
-		    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
-		    cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
-		    cmd.angular.y = 0.0;
-		    cmd.linear.z = pidZ.update(current_position_z, initial_position_z + 0.05);
+		    double pitch_cmd = pidX.update(current_position_x, initial_position_x + goal_x);
+		    double roll_cmd = pidY.update(current_position_y, initial_position_y + goal_y);
+		    double thrust_cmd = pidZ.update(current_position_z, initial_position_z + 0.05);
+
+		    publish_cmd(pitch_cmd, roll_cmd, thrust_cmd);
 
 		    ROS_INFO("Will land soon: Pitch = %f, Roll = %f, Thrust = %f ", cmd.linear.x, cmd.linear.y, cmd.linear.z);
-		    vel_pub_.publish(cmd);
 
 		    status = "LANDING";
            }
@@ -489,10 +536,11 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 	
  	if(calibrated)
 	{
-	    cmd.linear.x = pidX.update(current_position_x, initial_position_x + goal_x);
-            cmd.linear.y = pidY.update(current_position_y, initial_position_y + goal_y);
-            //cmd.angular.y = yawrate;
-            cmd.linear.z = pidZ.update(current_position_z, initial_position_z + goal_z);
+	    double pitch_cmd = pidX.update(current_position_x, initial_position_x + goal_x);
+            double roll_cmd = pidY.update(current_position_y, initial_position_y + goal_y);
+            double thrust_cmd = pidZ.update(current_position_z, initial_position_z + goal_z);
+
+	    publish_cmd(pitch_cmd,roll_cmd,thrust_cmd);
 
 	    ROS_INFO("POSITION CONTROL CMD : Pitch= %f, Roll= %f, Thrust= %f ",cmd.linear.x,cmd.linear.y,cmd.linear.z);
 	    ROS_INFO("GOAL POSITION : x= %f, y= %f, z= %f ",initial_position_x + goal_x,initial_position_y + goal_y,initial_position_z + goal_z);
@@ -516,14 +564,6 @@ void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 		    }
 	    }
 
-	    if(abs(error_x)>0.4 && abs(error_y) > 0.4 && abs(error_z) > 0.4)
-	    {
-		status = "OUT OF BOUNDS";
-		state = EMERGENCY;
-		ROS_INFO("OUT OF BOUNDS - EMERGENCY STOP");
-	     }
-
-            vel_pub_.publish(cmd);
 	}
 
 	else
@@ -540,12 +580,8 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
    if(state==EMERGENCY)
    {
 	    ROS_INFO("EMERGENCY STOP"); 
-	    cmd.linear.x = 0.0;
-            cmd.linear.y = 0.0;
-            cmd.angular.y = 0.0;
-            cmd.linear.z = 0.0;
+	    publish_cmd(0.0,0.0,0.0);
 	    thrust = 0;
-            vel_pub_.publish(cmd);
 	    pidReset();
 	    state = WAITING;
  	    status="NOT CALIBRATED";
@@ -555,6 +591,11 @@ void CrazyfliePositionController::emergency(const ros::TimerEvent& e)
    }
 }
 
+///////////////////////////////////////////
+//
+//	MAIN FUNCTION
+//
+///////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
