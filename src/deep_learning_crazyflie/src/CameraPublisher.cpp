@@ -33,7 +33,8 @@
 #include <sensor_msgs/image_encodings.h>
 #include <image_transport/image_transport.h>
 #include <camera_info_manager/camera_info_manager.h>
-#include <deep_learning_crazyflie/camera_parameters.h>
+#include <deep_learning_crazyflie/bottom_camera_parameters.h>
+#include <deep_learning_crazyflie/front_camera_parameters.h>
 #include <opencv2/videostab.hpp>
 
 using namespace cv;
@@ -117,8 +118,6 @@ class CameraPublisher
 	camera_matrix << FL_X, 0, PP_X, 0, FL_Y, PP_Y, 0, 0, 1 ;
 	distortion_params << DistArray[0],DistArray[1],DistArray[2],DistArray[3],DistArray[4];
 
-
-
   }
 
   // Initialize the camera
@@ -126,11 +125,16 @@ class CameraPublisher
   {
   	cap.open(camera_input_id);
 
+	cap.set(CV_CAP_PROP_FRAME_WIDTH , 480);
+	cap.set(CV_CAP_PROP_FRAME_HEIGHT , 640);
+
     	if( !cap.isOpened() )
 	    {
 		ROS_ERROR("Could not initialize camera with id : %d ",camera_input_id);
 		return false;
 	    }
+
+	ROS_INFO("Camera with id : %d initialized",camera_input_id);
 	
 	return true;
 
@@ -139,8 +143,9 @@ class CameraPublisher
   // Publish the image from the camera to the corresponding topic
   void Publish()
   {
-        cap >> InputImage;
 
+	ROS_INFO("Publishing image from camera with id : %d ",camera_input_id);
+        cap >> InputImage;
         if( InputImage.empty() )
 	{
 		ROS_INFO("Empty image from camera with id : %d ",camera_input_id);
@@ -175,32 +180,39 @@ int main( int argc, char** argv )
     //Initialize the Crazyflie Camera Publisher Node
     ros::init(argc, argv, "crazyflie_camera_node");
     ros::NodeHandle nh;
+
+    int bottom_camera_id,front_camera_id;
+
     image_transport::ImageTransport it(nh);
  
-    int camera_id;
-	
     try
     {
-        camera_id = atoi(argv[1]);
-	cout<<"\n Camera ID = "<<camera_id;
+        bottom_camera_id = atoi(argv[1]);
+       front_camera_id = atoi(argv[2]);
     }
 
-    catch (...)
-    {
+   catch (...)
+   {
 	cout << "Camera ID missing in Command Line";
 	exit(0);
-     }
+   }
+
+     ROS_INFO(" Front Camera = %d Bottom Camera = %d ", front_camera_id, bottom_camera_id);
 
     //Create a publisher for the bottom facing camera
-    CameraPublisher bottom_camera_pub("bottom", camera_id, it, FocalLength_X, FocalLength_Y, PrincipalPoint_X, PrincipalPoint_Y, Distortion);
+    CameraPublisher bottom_camera_pub("bottom", bottom_camera_id, it, FocalLength_X_Bottom, FocalLength_Y_Bottom, PrincipalPoint_X_Bottom, PrincipalPoint_Y_Bottom, Distortion_Bottom);
 
-    //Initialize the camera and check for errors
-    bool Initialized = bottom_camera_pub.Initialize();    
+    //Create a publisher for the front facing camera
+    CameraPublisher front_camera_pub("front", front_camera_id, it, FocalLength_X_Front, FocalLength_Y_Front, PrincipalPoint_X_Front, PrincipalPoint_Y_Front, Distortion_Front);
 
-    //If the camera has been initialized and everything is ok , publish the images from the camera
+    //Initialize the cameras and check for errors
+    bool Initialized = bottom_camera_pub.Initialize() && front_camera_pub.Initialize();    
+
+    //If the camera has been initialized and everything is ok , publish the images from the cameras
     while(nh.ok() && Initialized)
     {
 	bottom_camera_pub.Publish() ;
+	front_camera_pub.Publish();
     }
      
     return 0;
