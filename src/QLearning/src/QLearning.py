@@ -49,12 +49,11 @@ from deep_learning_crazyflie.srv import *
 class QLearner:
 
     #Initialize the QLearner
-    def __init__(self, param = 'Z',mode='behavioral cloning', setpoint = 0.4, action_limits = [20000, 55000], action_step_size = 1000, state_variance = [0.5,0.5], learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5, kp_range = [1000,10000], ki_range = [1000,6000], kd_range = [1000,10000]) :
+    def __init__(self, param = 'Z',mode='behavioral cloning', action_limits = [20000, 55000], action_step_size = 1000, state_variance = [0.5,0.5], learning_rate = 0.05, discount_factor = 0.5, epsilon = 0.5, kp=5000, ki=3000, kd=6500, kp_range = [1000,10000], ki_range = [1000,6000], kd_range = [1000,10000]) :
 
 	self.param = param
 	self.learning_rate = learning_rate
 	self.discount_factor = discount_factor
-	self.setpoint = setpoint
 	self.epsilon = epsilon
 	self.initialized = False
 	self.initial_state = (0.0,0.0)
@@ -71,6 +70,9 @@ class QLearner:
 	self.mode = mode
 	self.state_variance = state_variance
 	self.calibrated = False
+	self.kp = kp
+	self.ki = ki
+	self.kd = kd
 	self.kp_max = kp_range[1]
 	self.kp_min = kp_range[0]
 	self.ki_max = ki_range[1]
@@ -138,9 +140,6 @@ class QLearner:
 					
 		print "current_state = " + str(current_state)
 
-		#Execute the current action
-		self.execute_action(current_action)
-
 		self.current_state = current_state
 		self.current_action = current_action
 		self.current_value = current_value
@@ -153,18 +152,24 @@ class QLearner:
 
 
 
-    def set_pid(kp,ki,kd) :
+    def get_pid_action(self) :
 
 	rospy.wait_for_service('crazyflie/tune_pid')
 
 	try:
 		pid_tuning_client = rospy.ServiceProxy('crazyflie/tune_pid', TunePID)
-		return 	pid_tuning_client(self.tune_param, kp, ki, kd).success
+		return 	pid_tuning_client(self.tune_param, self.kp, self.ki, self.kd).action
 
 	except rospy.ServiceException, e:
 		print "tune_pid service call failed: %s"%e
-		return false
+		return self.current_action
 
+    
+    def randomize_pid(self) :
+
+	self.kp = random.uniform(self.kp_min, self.kp_max);
+	self.ki = random.uniform(self.ki_min, self.ki_max);
+	self.kd = random.uniform(self.kd_min, self.kd_max);
 
     #Update the Q(s,a) table	
     def update_policy(self) :
@@ -209,6 +214,7 @@ class QLearner:
 			action_in_policy = True
 			av['value'] = self.current_value
 			av['count'] = self.current_count
+			break
 
 	#If the action is not in the policy, augment the action value pair to that state
 	if action_in_policy is not True :
@@ -217,7 +223,7 @@ class QLearner:
 
 	self.epochs += 1
 
-	#Save policy once in every 10000 episodes
+	#Save policy once in every 100 episodes
 	if self.epochs % 100 == 0 :
 		#Save the updated policy
 		self.save_policy()	
@@ -238,54 +244,12 @@ class QLearner:
 	# If all the actions have been executed before, select action with less count, if count is more than 5 times , then do a random action	
 	if random_action :
 
-		action = random.choice(possible_actions)
+		action = round(self.get_pid_action()/self.step_size)*self.step_size
 
-		if len(self.policy[state]) < len(possible_actions) :
-			for move in possible_actions:
-
-				action_in_policy = False
-
-				for av in self.policy[state] :
-
-					if av['action'] == move :
-				
-						action_in_policy = True
-				
-					if av['action'] == action :
-
-						value = av['value']
-						count = av['count']
-
-
-				if action_in_policy is False :
-				
-					action = move
-					value = 0.0
-					count = 1.0
-					break
-
-		else :
-
-			sorted_av_table = []
-
-			#Sort the actions according to the count
-			sorted_av_table = sorted(self.policy[state], reverse=False, key = lambda av : av['count'])
-
-			#print sorted_av_table
-
-			for av in sorted_av_table :
-	
-				if av['action'] == action :
-
-					value = av['value']
-					count = av['count'] + 1
-
-				if av['count'] < 10 and av['action'] <=self.max_value and av['action'] >= self.min_value :
-					action = av['action']
-					value = av['value']
-					count = av['count'] + 1
-					break
-
+		for av in self.policy[state] :
+			if av['action'] == action :
+				value = av['value']
+				count = av['count']
 
 	else :
 	
@@ -310,7 +274,7 @@ class QLearner:
 	#Gaussian Reward Function
 	if self.param == 'Z' :
 		#Add a gain term that depends on current action(thrust) to overcome ground effect
-		ground_effect_gain = (self.current_action*(5+state[2])/(1+10*abs(state[0]) +10*abs(state[1]))) / (self.max_value)
+		ground_effect_gain = (self.current_action*(5+state[2])/(1+10*abs(state[0]) +10*abs(state[1]))) / (self.max_value )
 		reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))+ground_effect_gain
 	else :
 		reward = 10*math.exp(-(pow(state[0],2)/self.state_variance[0])-(pow(state[1],2)/self.state_variance[1]))

@@ -92,10 +92,10 @@
 #define GOAL_REACH_THRESHOLD_INIT 0.01
 #define GOAL_REACH_THRESHOLD_MAX 0.01
 
-#define OUT_OF_BOUNDS_THRESHOLD 0.7
+#define OUT_OF_BOUNDS_THRESHOLD 1.0
 
-#define SET_GOAL_RL 0
-#define SET_VEL_RL 1
+#define SET_GOAL_RL 1
+#define SET_VEL_RL 2
 
 
 ///////////////////////////////////////////
@@ -444,8 +444,16 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 	}
 	if(cmd_state->data == REINFORCEMENT_LEARNING)
 	{
-		status = "REINFORCEMENT LEARNING";
-		state = cmd_state->data;
+		if(calibrated)
+		{
+			ROS_INFO("Reinforcement Learning Mode activated");
+			status = "REINFORCEMENT LEARNING";
+			state = cmd_state->data;
+		}
+		else
+		{
+			ROS_INFO("Not Calibrated");
+		}
 	}
 	else
 	{
@@ -564,6 +572,13 @@ void CrazyfliePositionController::run()
 
 void CrazyfliePositionController::pos_ctrl(const ros::TimerEvent& e)
 {
+
+   if(state==REINFORCEMENT_LEARNING )
+   {
+	 pidX.update(current_position_x, initial_position_x + goal_x);
+	 pidY.update(current_position_y, initial_position_y + goal_y);
+	 pidZ.update(current_position_z, initial_position_z + goal_z);
+   }
    if(state==POS_CTRL )
    {
 	if(!inflight)

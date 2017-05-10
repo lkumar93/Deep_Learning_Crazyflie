@@ -1,6 +1,5 @@
-
 #
-# THIS IS AN IMPLEMENTATION OF DEEP Q LEARNING FOR POSITION CONTROL OF QUADROTORS
+# THIS IS AN IMPLEMENTATION OF Q LEARNING FOR POSITION CONTROL OF QUADROTORS
 #
 # COPYRIGHT BELONGS TO THE AUTHOR OF THIS CODE
 #
@@ -34,6 +33,7 @@ import numpy
 from QLearning import QLearner
 from rospy.exceptions import ROSException
 from deep_learning_crazyflie.srv import *
+from geometry_msgs.msg import Twist
 
 ###########################################
 ##
@@ -41,12 +41,11 @@ from deep_learning_crazyflie.srv import *
 ##
 ###########################################
 
-FPS = 13
-STEPS = FPS*15
-EPOCHS = 10*(FPS*60*60)
-STEP_RANGE = range(0,STEPS)
+FPS = 50
+EPOCHS = (FPS*60*2) #2 Minutes
 EPOCH_RANGE = range(0,EPOCHS)
-MODE = 'behavioral cloning'
+#MODE = 'behavioral cloning'
+MODE = 'reinforcement learning'
 TRAIN_FLAG = True
 SETPOINT_X = 0.0
 SETPOINT_Y = 0.0
@@ -63,11 +62,11 @@ def init_controllers() :
 	EPSILON = 0.0
 
 	if TRAIN_FLAG is True :
-		EPSILON = 1.0
+		EPSILON = 0.0
 
-	position_z_controller = QLearner(param = 'Z',setpoint=SETPOINT_Z, mode = MODE, action_limits = [20000,55000], action_step_size = 175, epsilon = EPSILON)
-	position_y_controller = QLearner(param = 'Y',setpoint=SETPOINT_Y, mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
-	position_x_controller = QLearner(param = 'X',setpoint=SETPOINT_X, mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON)
+	position_z_controller = QLearner(param = 'Z', mode = MODE, action_limits = [20000,55000], action_step_size = 175, epsilon = EPSILON, kp=5000, ki=3000, kd=6500, kp_range = [1000,10000], ki_range = [1000,6000], kd_range = [1000,10000])
+	position_y_controller = QLearner(param = 'Y', mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON, kp=40, ki=3, kd=20.0, kp_range = [10,100], ki_range = [1,20], kd_range = [10,100])
+	position_x_controller = QLearner(param = 'X', mode = MODE, action_limits = [-15,15], action_step_size = 0.15, epsilon = EPSILON, kp=40, ki=3, kd=20.0, kp_range = [10,100], ki_range = [1,20], kd_range = [10,100])
 
 	return [position_z_controller,position_y_controller,position_x_controller]
 
@@ -98,7 +97,7 @@ def epsilon_decay(controllers) :
 	
 	for controller in controllers :
 
-		controller.decrement_epsilon(STEPS*EPOCHS)
+		controller.decrement_epsilon(EPOCHS)
 
 
 def update(controllers) :
@@ -112,20 +111,22 @@ def update(controllers) :
 	return reward
 
 
-def extract_state(controllers,param) :
+def randomize_target(controllers ,min_value ,max_value ,cmd_publisher) :
 
-	for controller in controllers :
+	cmd = Twist()
 
-		if controller.param == param :
+	cmd.angular.x = 1
 
-			return controller.state[0]
+	cmd.linear.z = round(numpy.random.uniform(0,max_value),max_value)
+	cmd.linear.y = round(numpy.random.uniform(min_value,max_value),max_value)
+	cmd.linear.x = round(numpy.random.uniform(min_value,max_value),max_value)
 
-def randomize_target(controllers,min_value,max_value) :
+	for i in range(0,100) :
+		cmd_publisher.publish(cmd)
 
-	for controller in controllers :
-		
-		controller.setpoint = round(numpy.random.uniform(min_value,max_value),max_value)
-
+def randomize_pid(controllers) :
+	for controller in controllers:
+		controller.randomize_pid()
 
 def get_status() :
 
@@ -133,7 +134,7 @@ def get_status() :
 
     try:
         status_client = rospy.ServiceProxy('crazyflie/request_status', Status)
-        return status_client(true).status
+        return status_client(True).status
 
     except rospy.ServiceException, e:
         print "request_status service call failed: %s"%e
@@ -198,15 +199,16 @@ if __name__ == '__main__':
 
 	elif MODE == 'reinforcement learning':
 
-		cmd_topic = 'crazyflie/deep_learning/cmd_vel'
+		cmd_vel_topic = 'crazyflie/deep_learning/cmd_vel'
 
-		cmd_publisher = rospy.Publisher(cmd_topic, Twist, queue_size = 1)
+		cmd_vel_publisher = rospy.Publisher(cmd_vel_topic, Twist, queue_size = 1)
+
+		cmd_pos_topic = 'crazyflie/deep_learning/cmd_pos'
+
+		cmd_pos_publisher = rospy.Publisher(cmd_vel_topic, Twist, queue_size = 1)
 
 		rate = rospy.Rate(FPS)
 
-		pygame.init()
-		pygame.display.set_mode((20, 20))
-		clock = pygame.time.Clock()
 		rewards_per_episode = []
 		count = 0
 
@@ -214,22 +216,19 @@ if __name__ == '__main__':
 		controllers = init_controllers()
 
 		print "initialized"
-
-		status = WAITING
-		start = False
-
+	
 		#If the user wants to train
 		if TRAIN_FLAG :
 		
-			while True:
+			for i in EPOCH_RANGE:
 
 				status = get_status()
 			
-				if status is 'REINFORCEMENT LEARNING' and start is True:
+				if status == 'REINFORCEMENT LEARNING':
 
 					total_reward_per_episode = 0.0			
 
-					run(controllers,cmd_publisher)
+					run(controllers,cmd_vel_publisher)
 
 					rate.sleep()
 
@@ -237,81 +236,48 @@ if __name__ == '__main__':
 
 					epsilon_decay(controllers)
 
+					count += 1
 
-				for event in pygame.event.get():
+					if count%100 == 0 :
+						randomize_pid(controllers)						
 
-					if event.type == pygame.QUIT:
-					     start = False
-						cmd = Twist()
-						for i in range(0,1000) :
-							cmd.linear.z = 0.0
-							cmd.linear.x = 0.0
-							cmd.linear.y = 0.0
-							cmd_publisher.publish(cmd)
+					print " Count = " + str(count) +" ,Epsilon = " + str(controllers[0].epsilon)
 
-					    pygame.quit(); 
-					    sys.exit() 
+					rewards_per_episode.append(total_reward_per_episode)
 
-					if event.type == pygame.KEYDOWN :
+					print '\n \n \n rewards =' +str(total_reward_per_episode) + " ,epoch = "+str(i)	
 
-					    if event.key == pygame.K_UP:
-						pass 
-	
-					    elif event.key == pygame.K_DOWN:
-						pass 
+				else :
+					print status
+					cmd = Twist()
+					print "status is not REINFORCEMENT LEARNING"
+					print "stopping the reinforcement learning module"
 
-					    elif event.key == pygame.K_LEFT:
-						pass
+					for i in range(0,1000) :
+						cmd.linear.z = 0.0
+						cmd.linear.x = 0.0
+						cmd.linear.y = 0.0
+						cmd_vel_publisher.publish(cmd)
 
-					    elif event.key == pygame.K_RIGHT:
-						pass
+					break
+						
+			if count > 100 :
 
-					    elif event.key == pygame.K_b:
-						print "starting the reinforcement learning module"
-						start = True
-						time.sleep(2)
+				plotter.figure()		
 
-				    	    if event.key == pygame.K_q:
-						start = False
-						cmd = Twist()
-						for i in range(0,1000) :
-							cmd.linear.z = 0.0
-							cmd.linear.x = 0.0
-							cmd.linear.y = 0.0
-							cmd_publisher.publish(cmd)
-						print "stopping the reinforcement learning module"
-						time.sleep(2)
-						break;
+				plotter.plot(EPOCH_RANGE, rewards_per_episode,'g',label='Rewards' )
 
-						count += 1
+				plotter.xlabel('Episode')
+				plotter.ylabel('Rewards')
 
+				plotter.title('Learning Curve ')
 
-						print " Count = " + str(count) +" ,Epsilon = " + str(controllers[0].epsilon)
-	
-						rewards_per_episode.append(total_reward_per_episode)
-	
-						print '\n \n \n rewards =' +str(total_reward_per_episode) + " ,epoch = "+str(i)	
+				plotter.savefig('../figures/LearningCurve.png')
 
-		
-						clock.tick(FPS*2)
-
-			plotter.figure()		
-
-			plotter.plot(EPOCH_RANGE, rewards_per_episode,'g',label='Rewards' )
-
-			plotter.xlabel('Episode')
-			plotter.ylabel('Rewards')
-
-			plotter.title('Learning Curve ')
-
-			plotter.savefig('../figures/LearningCurve.png')
-
-			plotter.show()
+				plotter.show()
 
 		else :
-
-			#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
-		
+	
 			count = 0
 			states = []
 			while not rospy.is_shutdown():
@@ -319,22 +285,8 @@ if __name__ == '__main__':
 				count = count + 1
 				run(controllers,cmd_publisher)
 				rate.sleep()
-			
-				#if check_validity(controllers) is False :
-					#simulator_reset(controllers,cmd_publisher,gazebo_publisher)
-
-				states.append(extract_state(controllers,'Thrust'))
-
 				if count > 500 :
 					break
-
-			plotter.figure()		
-			plotter.plot(range(0,len(states)), states ,'g',label='Error' )
-			plotter.xlabel('Time')
-			plotter.ylabel('Error')
-			plotter.title('Learning Curve - PID ')
-			plotter.savefig('../figures/LearningCurvePID.png')
-			plotter.show()
 
 	else :
 		print "Unknown Mode : not available"

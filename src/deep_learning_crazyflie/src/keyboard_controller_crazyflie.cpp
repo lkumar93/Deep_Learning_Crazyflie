@@ -473,8 +473,6 @@ void TeleopCrazyflie::keyLoop()
 	dirty = true;
         break;
 
-
-
       case KEYCODE_L:
         ROS_INFO("LAND");
 
