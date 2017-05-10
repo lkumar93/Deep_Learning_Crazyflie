@@ -94,6 +94,10 @@
 
 #define OUT_OF_BOUNDS_THRESHOLD 0.7
 
+#define SET_GOAL_RL 0
+#define SET_VEL_RL 1
+
+
 ///////////////////////////////////////////
 //
 //	NAMESPACES
@@ -295,6 +299,10 @@ deep_learning_crazyflie::TunePID::Response &response)
 		ki_z = request.ki;
 		kd_z = request.kd;
 		ROS_INFO("PID TUNING: kp_z = %f, ki_z = %f, kd_z =%f", kp_z, ki_z, kd_z);
+		pidSet();
+
+		if(state == REINFORCEMENT_LEARNING)
+			response.action = pidZ.update(current_position_z, initial_position_z + goal_z);
 	}
 
 	else if (request.param == X_TUNE)
@@ -303,6 +311,10 @@ deep_learning_crazyflie::TunePID::Response &response)
 		ki_x = request.ki;
 		kd_x = request.kd;
 		ROS_INFO("PID TUNING: kp_x = %f, ki_x = %f, kd_x =%f", kp_x, ki_x, kd_x);
+		pidSet();
+
+		if(state == REINFORCEMENT_LEARNING)
+			response.action = pidX.update(current_position_x, initial_position_x + goal_x);
 	}
 
 	else if (request.param == Y_TUNE)
@@ -311,9 +323,11 @@ deep_learning_crazyflie::TunePID::Response &response)
 		ki_y = request.ki;
 		kd_y = request.kd;
 		ROS_INFO("PID TUNING: kp_y = %f, ki_y = %f, kd_y =%f", kp_y, ki_y, kd_y);
-	}
+		pidSet();
 
-	pidSet();
+		if(state == REINFORCEMENT_LEARNING)
+			response.action = pidY.update(current_position_y, initial_position_y + goal_y);
+	}
 
 	response.success = true;
 
@@ -387,11 +401,20 @@ void CrazyfliePositionController::getGroundTruth(const geometry_msgs::PoseStampe
 
 void CrazyfliePositionController::cmdSubscriber(const geometry_msgs::TwistConstPtr& cmd_pos)
 {
-	set_goal(cmd_pos->linear.x,cmd_pos->linear.y,cmd_pos->linear.z,cmd_pos->angular.y);
 
-	ROS_INFO("GOAL CHANGED : Goal X = %f, Goal Y = %f, Goal Z = %f", goal_x, goal_y,goal_z);
-	status ="GOAL CHANGED";
-
+	if(state == REINFORCEMENT_LEARNING)
+	{	
+		if(cmd_pos->angular.x == SET_GOAL_RL)
+		{
+			set_goal(cmd_pos->linear.x, cmd_pos->linear.y, cmd_pos->linear.z, 0.0);
+		}
+	}
+	else
+	{
+		set_goal(cmd_pos->linear.x,cmd_pos->linear.y,cmd_pos->linear.z,cmd_pos->angular.y);
+		ROS_INFO("GOAL CHANGED : Goal X = %f, Goal Y = %f, Goal Z = %f", goal_x, goal_y,goal_z);
+		status ="GOAL CHANGED";
+	}
 }
 
 void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr& cmd_state)
@@ -419,6 +442,11 @@ void CrazyfliePositionController::stateSubscriber(const std_msgs::Int32ConstPtr&
 		
 		state = WAITING;
 	}
+	if(cmd_state->data == REINFORCEMENT_LEARNING)
+	{
+		status = "REINFORCEMENT LEARNING";
+		state = cmd_state->data;
+	}
 	else
 	{
 		state = cmd_state->data;
@@ -430,7 +458,6 @@ void CrazyfliePositionController::takeoff(const ros::TimerEvent& e)
 {
    if(state==TAKE_OFF)
    {
-
 	set_goal(0.0,0.0,0.25);
 
  	if(calibrated)

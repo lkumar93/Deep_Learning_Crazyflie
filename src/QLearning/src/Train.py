@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
 				status = get_status()
 			
-				if status is not 'EMERGENCY' and status is not 'NOT CALIBRATED' and status is not 'ERROR' and start is True:
+				if status is 'REINFORCEMENT LEARNING' and start is True:
 
 					total_reward_per_episode = 0.0			
 
