@@ -4,6 +4,7 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
         - /Imu1
       Splitter Ratio: 0.5
     Tree Height: 254
@@ -25,7 +26,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: Image
 Visualization Manager:
   Class: ""
   Displays:
@@ -93,7 +94,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: world
+    Fixed Frame: crazyflie/base_link
     Frame Rate: 30
   Name: root
   Tools:
@@ -126,10 +127,10 @@ Visualization Manager:
         Z: 1.33932
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.520398
+      Pitch: 0.465398
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.520398
+      Yaw: 0.540398
     Saved: ~
 Window Geometry:
   Displays:
