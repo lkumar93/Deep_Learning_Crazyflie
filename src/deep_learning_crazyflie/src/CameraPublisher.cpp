@@ -73,7 +73,7 @@ class CameraPublisher
 	camera_position = position ;
 	camera_input_id = id ;	
 	camera_topic_name = prefix + camera_position + postfix ;
-	camera_pub = ImageTransporter.advertiseCamera(camera_topic_name, 1);	
+	camera_pub = ImageTransporter.advertiseCamera(camera_topic_name, 3);	
 	camera_info = new sensor_msgs::CameraInfo ();
 	camera_info_ptr = sensor_msgs::CameraInfoPtr (camera_info);
 	
@@ -154,8 +154,9 @@ class CameraPublisher
 	{
 	    sensor_msgs::ImagePtr msg;
 	    //undistort(InputImage, UndistortedImage, camera_matrix, distortion_params); 
-	    GaussianBlur(InputImage,InputImage, Size(5,5),0,0);
-	    medianBlur(InputImage,DeNoisedImage,5);
+	    DeNoisedImage = InputImage;
+	    //GaussianBlur(InputImage,InputImage, Size(5,5),0,0);
+	    //medianBlur(InputImage,DeNoisedImage,5);
 	    //fastNlMeansDenoisingColored(InputImage,DeNoisedImage,3,3,5,11);
 	    msg  = cv_bridge::CvImage(std_msgs::Header(), "bgr8", DeNoisedImage).toImageMsg();
 	    msg->header.stamp = ros::Time::now() ;
